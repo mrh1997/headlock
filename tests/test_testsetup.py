@@ -232,9 +232,23 @@ class TestTestSetup(object):
                == os.path.join(os.path.abspath(from_parent_dir),
                                self.TSDummy._BUILD_DIR_)
 
-    def test_getTsName_isFirstFileNamePlusClassName(self, tmpdir):
-        TS = self.c_mixin_from(tmpdir, b'', 'namingfile.c')
-        assert TS.get_ts_name() == 'namingfile_Namingfile'
+    def test_getTsName_returnFirstCFileNamePlusClassName(self, tmpdir):
+        files = list(map(tmpdir.join, ['hdr.h', 'src1.c', 'src2.c']))
+        for f in files:
+            f.write_binary(b'')
+        class TSClassName(TestSetup.c_mixin(*map(str, files))): pass
+        assert TSClassName.get_ts_name() == 'src1_TSClassName'
+
+    def test_getTsName_onOnlyHeader_returnsHFileNamePlusClassName(self, tmpdir):
+        files = list(map(tmpdir.join, ['hdr1.h', 'hdr2.h']))
+        for f in files:
+            f.write_binary(b'')
+        class TSClassName(TestSetup.c_mixin(*map(str, files))): pass
+        assert TSClassName.get_ts_name() == 'hdr1_TSClassName'
+
+    def test_getTsName_onNoSourceFiles_returnsClassNameOnly(self, tmpdir):
+        class TSClassName(TestSetup.c_mixin()): pass
+        assert TSClassName.get_ts_name() == 'TSClassName'
 
     def test_macroWrapper_ok(self, tmpdir):
         TS = self.c_mixin_from(tmpdir, b'#define MACRONAME   123', 'macro.c')

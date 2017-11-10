@@ -144,7 +144,9 @@ class TestSetup(BuildInDefs):
         if len(cls._base_source_files) == 0:
             return cls.__name__
         else:
-            mainfile = cls._base_source_files[0]
+            c_files = [f for f in cls._base_source_files
+                       if f.lower().endswith('.c')]
+            mainfile = c_files[0] if c_files else cls._base_source_files[0]
             main, _ = os.path.splitext(os.path.basename(mainfile))
             return main + '_' + cls.__name__
 
@@ -397,7 +399,10 @@ class TestSetup(BuildInDefs):
             for source_file in source_files:
                 cls.__add_source_file__(source_file)
             super(cls if this_class is None else this_class, cls).__parse__()
-        [name, _] = os.path.splitext(os.path.basename(source_files[0]))
+        if source_files:
+            [name, _] = os.path.splitext(os.path.basename(source_files[0]))
+        else:
+            name = 'TSUnnamed'
         this_class = type(name.capitalize(),
                          (cls,),
                          {'__parse__': classmethod(__parse__)})
