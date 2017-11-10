@@ -354,6 +354,16 @@ class TestTestSetup(object):
                 assert ts.mock_fallback('unmocked_func', 11, 22)
             assert "unmocked_func" in str(excinfo.value)
 
+    def test_onCompilationError_raisesBuildError(self, tmpdir):
+        TS = self.c_mixin_from(tmpdir, b'void func(void) { undefined_FUNC(); }',
+                               'undefined_symbol.c')
+        try:
+            TS()
+        except BuildError as e:
+            assert 'undefined_FUNC' in str(e)
+        else:
+            raise AssertionError()
+
     def test_registerUnloadEvent_onRegisteredEvent_isCalledOnUnload(self):
         ts = self.TSDummy()
         with ts.__execute__():

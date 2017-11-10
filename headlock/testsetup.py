@@ -199,14 +199,14 @@ class TestSetup(BuildInDefs):
 
     def __init__(self):
         super(TestSetup, self).__init__()
-        if type(self) not in BUILD_CACHE:
-            self.__build__()
-            BUILD_CACHE.add(type(self))
         self.__unload_events = []
         self._global_refs_ = {}
         self.__dll = None
         if self._delayed_exc:
             raise self._delayed_exc
+        if type(self) not in BUILD_CACHE:
+            self.__build__()
+            BUILD_CACHE.add(type(self))
 
     @classmethod
     def _get_patches(cls):
@@ -340,11 +340,11 @@ class TestSetup(BuildInDefs):
                     os.remove(self.get_makefile_path())
                 except OSError:
                     pass
-                raise BuildError(f'failed to call cmake: {e}', self)
+                raise BuildError(f'failed to call cmake: {e}', type(self))
             else:
                 if completed_run.returncode != 0:
                     return BuildError('CMAKE ERROR(S):' + completed_run.stderr,
-                                      self)
+                                      type(self))
 
         def build_dll():
             try:
@@ -356,11 +356,11 @@ class TestSetup(BuildInDefs):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE)
             except (subprocess.CalledProcessError, FileNotFoundError) as e:
-                raise BuildError(f'failed to call mingw32-make: {e}', self)
+                raise BuildError(f'failed to call mingw32-make: {e}',
+                                 type(self))
             else:
                 if completed_proc.returncode != 0:
-                    return BuildError('MING32W-MAKE ERROR(S):' +
-                                      completed_proc.stderr, self)
+                    raise BuildError(completed_proc.stderr, type(self))
 
         if not DISABLE_AUTOBUILD:
             force_build_makefile = update_cmakelist()
