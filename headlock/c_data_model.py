@@ -802,6 +802,8 @@ class CStruct(CObj):
     @classmethod
     def iter_elementary_types(cls):
         yield cls.__name__
+        for member in cls._members_.values():
+            yield from member.iter_elementary_types()
 
 
 class CEnum(CInt):

@@ -1037,6 +1037,12 @@ class TestCStruct:
             ('m1', Member), ('m2', DummyInt))
         assert list(TestStruct.iter_elementary_types()) == ["TestStruct"]
 
+    def test_iterElementaryTypes_onMembersBasedOnCustomElemTypes_returnsNameSubTypesOfMembers(self, DummyStruct):
+        TestStruct = headlock.c_data_model.CStruct.typedef(
+            'TestStruct',
+            ('m1', DummyStruct))
+        assert 'DummyStruct' in list(TestStruct.iter_elementary_types())
+
 
 @pytest.fixture
 def DummyCFunc():
