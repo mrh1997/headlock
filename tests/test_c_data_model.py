@@ -1027,21 +1027,12 @@ class TestCStruct:
                    '\tstruct DummyStruct inner_strct;\n'
                    '}')
 
-    def test_iterReqCustomTypes_returnsNameOfStruct(self):
-        class Member(DummyInt):
-            @classmethod
-            def iter_req_custom_types(cls):
-                yield "test"
+    def test_iterReqCustomTypes_returnsNameOfStructBeforeNamesOfSubTypes(self, DummyStruct):
         TestStruct = headlock.c_data_model.CStruct.typedef(
             'TestStruct',
-            ('m1', Member), ('m2', DummyInt))
-        assert 'TestStruct' in list(TestStruct.iter_req_custom_types())
-
-    def test_iterReqCustomTypes_onMembersBasedOnCustomElemTypes_returnsNameSubTypesOfMembers(self, DummyStruct):
-        TestStruct = headlock.c_data_model.CStruct.typedef(
-            'TestStruct',
-            ('m1', DummyStruct))
-        assert 'DummyStruct' in list(TestStruct.iter_req_custom_types())
+            ('m1', DummyStruct), ('m2', DummyStruct))
+        assert list(TestStruct.iter_req_custom_types()) \
+               == ['DummyStruct', 'DummyStruct', 'TestStruct']
 
 
 @pytest.fixture

@@ -248,19 +248,21 @@ class TestSetup(BuildInDefs):
             yield ' * DO NOT MODIFY IT MANUALLY.                             */\n'
             yield '\n'
             if mock_funcs or global_vars:
-                required_types = set.union(*(
-                    set(objtype.iter_req_custom_types())
-                    for objtype in itertools.chain(mock_funcs.values(),
-                                                   global_vars.values()) ))
-                for builtin_name in sorted(dir(self)):
-                    if builtin_name in required_types:
-                        yield getattr(self, builtin_name).c_definition() + ';\n'
-                for struct_name, struct in sorted(parser.structs.items()):
-                    if struct_name in required_types:
-                        yield struct.c_definition() + ';\n'
-                for struct_name, struct in sorted(parser.structs.items()):
-                    if struct_name in required_types:
-                        yield struct.c_definition_full() + ';\n'
+                # remove duplicates in req_custom_types without loosing order!
+                required_types_order = list()
+                required_types = set()
+                for objtype in itertools.chain(mock_funcs.values(),
+                                               global_vars.values()):
+                    for req_type_name in objtype.iter_req_custom_types():
+                        if req_type_name not in required_types:
+                            required_types.add(req_type_name)
+                            required_types_order.append(req_type_name)
+                for struct_name in required_types_order:
+                    struct = parser.structs[struct_name]
+                    yield struct.c_definition() + ';\n'
+                for struct_name in required_types_order:
+                    struct = parser.structs[struct_name]
+                    yield struct.c_definition_full() + ';\n'
             yield '\n'
             for varname, var in sorted(global_vars.items()):
                 yield var.c_definition(varname) + ';\n'

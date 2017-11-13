@@ -1,5 +1,9 @@
 Small (can be done by occassion)
 --------------------------------
+* replace
+    * TestSetup.__execute__() by __enter__/__exit__()
+    * TestSetup.__load__() by .__startup__()
+    * TestSetup.__unload__ by .__shutdown__()
 * provide method for allowing any object to be cast to a CObj of a specific type
   I.e. ts.task_xyz could be passed directly then (instead of ts.task_xyz.handle)
 * implicit cast buf() objects to pointers/array of type void/uint8_t
@@ -48,8 +52,6 @@ Medium
   always OK. "cobj.val = cobj" shall correspond to explicit casts
   (same as "ctype(cobj)"")
 * on exceptions within mocks jump directly to calling python code via setjmp
-* ensure that DLL is unloaded (DLL.__del__ does not work reliably) see __exit__.
-  Ideally generate error message
 * depends_on:
   * remove _depends_on_ out of constructor (shall be set via member access
   * _depends_on_ should be checked for correctness again, as errors can be

@@ -801,9 +801,9 @@ class CStruct(CObj):
 
     @classmethod
     def iter_req_custom_types(cls):
-        yield cls.__name__
         for member in cls._members_.values():
             yield from member.iter_req_custom_types()
+        yield cls.__name__
 
 
 class CEnum(CInt):

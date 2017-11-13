@@ -300,6 +300,16 @@ class TestTestSetup(object):
         with ts.__execute__():
             assert issubclass(ts.struct.strct_t, CStruct)
 
+    def test_structWrapper_onContainedStruct_ensuresContainedStructDeclaredFirst(self, tmpdir):
+        TSMock = self.c_mixin_from(tmpdir,
+            b'struct s2 { '
+            b'     struct s1 { int m; } s1; '
+            b'     struct s3 { int m; } s3;'
+            b'} ;'
+            b'void f(struct s2);',
+            'inorder_defined_structs.c')
+        TSMock()
+
     def test_enumWrapper_storesEnumDefInEnumCls(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'enum enum_t { a };', 'enum.c')
         ts = TSMock()
