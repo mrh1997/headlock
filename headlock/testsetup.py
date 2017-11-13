@@ -249,7 +249,7 @@ class TestSetup(BuildInDefs):
             yield '\n'
             if mock_funcs or global_vars:
                 required_types = set.union(*(
-                    set(objtype.iter_elementary_types())
+                    set(objtype.iter_req_custom_types())
                     for objtype in itertools.chain(mock_funcs.values(),
                                                    global_vars.values()) ))
                 for builtin_name in sorted(dir(self)):

@@ -308,7 +308,7 @@ class CObj(metaclass=CObjType):
             ptr[ndx] = new_val[ndx]
 
     @classmethod
-    def iter_elementary_types(cls):
+    def iter_req_custom_types(cls):
         return iter([])
 
     @classmethod
@@ -539,8 +539,8 @@ class CPointer(CObj):
         return cls.base_type.c_definition(ptr_def)
 
     @classmethod
-    def iter_elementary_types(cls):
-        yield from cls.base_type.iter_elementary_types()
+    def iter_req_custom_types(cls):
+        yield from cls.base_type.iter_req_custom_types()
 
 
 class CArray(CObj):
@@ -657,8 +657,8 @@ class CArray(CObj):
         return cls.base_type.c_definition(array_def)
 
     @classmethod
-    def iter_elementary_types(cls):
-        yield from cls.base_type.iter_elementary_types()
+    def iter_req_custom_types(cls):
+        yield from cls.base_type.iter_req_custom_types()
 
 
 class CMember(object):
@@ -800,10 +800,10 @@ class CStruct(CObj):
         cls._members_order_ = [nm for nm,_ in members]
 
     @classmethod
-    def iter_elementary_types(cls):
+    def iter_req_custom_types(cls):
         yield cls.__name__
         for member in cls._members_.values():
-            yield from member.iter_elementary_types()
+            yield from member.iter_req_custom_types()
 
 
 class CEnum(CInt):
@@ -997,10 +997,10 @@ class CFunc(CObj):
                                     '('+', '.join(partype_strs)+')')
 
     @classmethod
-    def iter_elementary_types(cls):
+    def iter_req_custom_types(cls):
         for arg in cls.args:
-            yield from arg.iter_elementary_types()
-        yield from (cls.returns or CVoid).iter_elementary_types()
+            yield from arg.iter_req_custom_types()
+        yield from (cls.returns or CVoid).iter_req_custom_types()
 
 
 class CFuncPointer(CPointer):

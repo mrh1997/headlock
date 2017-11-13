@@ -355,8 +355,8 @@ class TestCInt:
         with pytest.raises(headlock.c_data_model.WriteProtectError):
             int_obj.raw = b'1234'
 
-    def test_iterElementaryTypes_returnsEmptyList(self):
-        assert list(DummyInt.iter_elementary_types()) == []
+    def test_iterReqCustomTypes_returnsEmptyList(self):
+        assert list(DummyInt.iter_req_custom_types()) == []
 
 
 class TestCPointer:
@@ -585,12 +585,12 @@ class TestCPointer:
         assert DummyInt.ptr.with_attr('volatile').c_definition('ab') \
                == 'DummyInt *volatile ab'
 
-    def test_iterElementaryTypes_returnsReferredTypeElementaryTypes(self):
+    def test_iterReqCustomTypes_returnsReferredTypeElementaryTypes(self):
         class X(DummyInt):
             @classmethod
-            def iter_elementary_types(cls):
+            def iter_req_custom_types(cls):
                 return iter(["test", "test2"])
-        assert list(X.ptr.iter_elementary_types()) == ["test", "test2"]
+        assert list(X.ptr.iter_req_custom_types()) == ["test", "test2"]
 
 
 class TestCArray:
@@ -772,12 +772,12 @@ class TestCArray:
     def test_cDefinition_onPtrToArray_ok(self):
         assert DummyInt[10].ptr.c_definition('x') == 'DummyInt (*x)[10]'
 
-    def test_iterElementaryTypes_returnsReferredTypeElementaryTypes(self):
+    def test_iterReqCustomTypes_returnsReferredTypeElementaryTypes(self):
         class X(DummyInt):
             @classmethod
-            def iter_elementary_types(cls):
+            def iter_req_custom_types(cls):
                 return iter(["test", "test2"])
-        assert list(X[3].iter_elementary_types()) == ["test", "test2"]
+        assert list(X[3].iter_req_custom_types()) == ["test", "test2"]
 
 
 class TestCStruct:
@@ -1027,21 +1027,21 @@ class TestCStruct:
                    '\tstruct DummyStruct inner_strct;\n'
                    '}')
 
-    def test_iterElementaryTypes_returnsNameOfStruct(self):
+    def test_iterReqCustomTypes_returnsNameOfStruct(self):
         class Member(DummyInt):
             @classmethod
-            def iter_elementary_types(cls):
+            def iter_req_custom_types(cls):
                 yield "test"
         TestStruct = headlock.c_data_model.CStruct.typedef(
             'TestStruct',
             ('m1', Member), ('m2', DummyInt))
-        assert list(TestStruct.iter_elementary_types()) == ["TestStruct"]
+        assert 'TestStruct' in list(TestStruct.iter_req_custom_types())
 
-    def test_iterElementaryTypes_onMembersBasedOnCustomElemTypes_returnsNameSubTypesOfMembers(self, DummyStruct):
+    def test_iterReqCustomTypes_onMembersBasedOnCustomElemTypes_returnsNameSubTypesOfMembers(self, DummyStruct):
         TestStruct = headlock.c_data_model.CStruct.typedef(
             'TestStruct',
             ('m1', DummyStruct))
-        assert 'DummyStruct' in list(TestStruct.iter_elementary_types())
+        assert 'DummyStruct' in list(TestStruct.iter_req_custom_types())
 
 
 @pytest.fixture
@@ -1234,18 +1234,18 @@ class TestCFunc:
             headlock.c_data_model.CFunc.typedef().with_attr('cdecl')
         assert cdecl_func_def.c_definition('f') == 'void __cdecl f(void)'
 
-    def test_iterElementaryTypes_returnsMemberTypesElementaryTypes(self):
+    def test_iterReqCustomTypes_returnsMemberTypesElementaryTypes(self):
         def define_type(elem_type_name):
             class ElemType(DummyInt):
                 @classmethod
-                def iter_elementary_types(cls):
+                def iter_req_custom_types(cls):
                     yield elem_type_name
             return ElemType
         test_func = headlock.c_data_model.CFunc.typedef(
             define_type('test'),
             define_type('test2'),
             returns=define_type('test3'))
-        assert set(test_func.iter_elementary_types()) \
+        assert set(test_func.iter_req_custom_types()) \
                == {'test', 'test2', 'test3'}
 
 
