@@ -293,7 +293,7 @@ class TestCParser:
         self.assert_parses_as_type('int ** * x', bd.int.ptr.ptr.ptr)
 
     def test_convertTypeFromCursor_onArrayType_ok(self):
-        self.assert_parses_as_type('int x[10]', bd.int[10])
+        self.assert_parses_as_type('int x[10]', bd.int.array(10))
 
     def test_convertTypeFromCursor_onSimpleFuncPtr_ok(self):
         self.assert_parses_as_type('void (*x)()', CFunc.typedef().ptr)
@@ -385,7 +385,7 @@ class TestCParser:
 
     def test_readFromCursor_onStructWithFlexibleArrayMember_addsArrayOfLen0(self):
         struct_def = CStruct.typedef('strctname',
-                                     ('a', bd.int), ('b', bd.short[0]))
+                                     ('a', bd.int), ('b', bd.short.array(0)))
         self.assert_parses('struct strctname { int a; short b[]; };',
                            exp_structs={'strctname': struct_def})
 

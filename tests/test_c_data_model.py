@@ -346,7 +346,7 @@ class TestCInt:
         assert int_obj.val == 0x00000011
 
     def test_setRaw_onValueGreaterThanCObj_ok(self):
-        int_obj = DummyInt[2]()
+        int_obj = DummyInt.array(2)()
         int_obj.raw = b'\x11\x22\x33\x44\x55'
         assert int_obj.val == [0x44332211, 0x00000055]
 
@@ -398,7 +398,7 @@ class TestCPointer:
         assert DummyShortInt.ptr(int_ptr)._depends_on_ == int_obj
 
     def test_create_fromCArray_returnsCastedArray(self):
-        array = DummyShortInt[9]()
+        array = DummyShortInt.array(9)()
         ptr = DummyInt.ptr(array)
         assert ptr.val == array.ptr.val
 
@@ -415,11 +415,11 @@ class TestCPointer:
         assert ptr.val == ct.addressof(ctypes_int)
 
     def test_getCStr_onZeroTerminatedStr_returnsPyString(self):
-        array = DummyInt[3]([ord('X'), ord('y')])
+        array = DummyInt.array(3)([ord('X'), ord('y')])
         assert array[0].ptr.cstr == 'Xy'
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt[5]()
+        array = DummyInt.array(5)()
         array[0].ptr.cstr = 'Xy\0z'
         assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0]
 
@@ -449,7 +449,7 @@ class TestCPointer:
         assert ptr.val == 0x123456
 
     def test_setVal_onCArray_setsAddressOfArray(self):
-        array = DummyInt[3]()
+        array = DummyInt.array(3)()
         ptr = DummyInt.ptr()
         ptr.val = array
         assert ptr.val == array.ptr.val
@@ -506,7 +506,7 @@ class TestCPointer:
         assert int_ptr.val - 200 == moved_intptr.val
 
     def test_sub_onCPointer_returnsNumberOfElementsInBetween(self):
-        obj_arr = DummyShortInt[3]()
+        obj_arr = DummyShortInt.array(3)()
         adr0 = obj_arr[0].ptr
         adr2 = obj_arr[2].ptr
         assert adr2 - adr0 == 2
@@ -519,13 +519,13 @@ class TestCPointer:
             adr2 - adr1
 
     def test_sub_onCArray_returnsNumberOfElementsInBetween(self):
-        obj_arr = DummyShortInt[3]()
+        obj_arr = DummyShortInt.array(3)()
         adr2 = obj_arr[2].ptr
         assert adr2 - obj_arr == 2
         assert isinstance(adr2 - obj_arr, int)
 
     def test_sub_onCPointerOfDifferrentType_raisesTypeError(self):
-        short_arr = DummyShortInt[3]()
+        short_arr = DummyShortInt.array(3)()
         adr2 = DummyInt().ptr
         with pytest.raises(TypeError):
             adr2 - short_arr
@@ -536,15 +536,15 @@ class TestCPointer:
         assert moved_intptr.val == int_ptr.val - DummyInt.sizeof
 
     def test_getItem_onNdx_returnsCObjAtNdx(self):
-        array = DummyInt[3]([0x11, 0x22, 0x33])
+        array = DummyInt.array(3)([0x11, 0x22, 0x33])
         ptr = DummyInt.ptr(array.ptr)
         assert ptr[1] == 0x22  and  ptr[2] == 0x33
 
     def test_getItem_onSlice_returnsCArrayOfCObjAtSlice(self):
-        array = DummyInt[4]([0x11, 0x22, 0x33, 0x44])
+        array = DummyInt.array(4)([0x11, 0x22, 0x33, 0x44])
         ptr = DummyInt.ptr(array.ptr)
         part_array = ptr[1:3]
-        assert type(part_array) == DummyInt[2]
+        assert type(part_array) == DummyInt.array(2)
         assert part_array.val == [0x22, 0x33]
 
     def test_typeEq_onDifferentTypeObjButSameBases_returnsTrue(self):
@@ -603,181 +603,182 @@ class TestCPointer:
 class TestCArray:
 
     def test_brackets_onIntType_returnsArraySubClass(self):
-        array_type = DummyInt[10]
+        array_type = DummyInt.array(10)
         assert issubclass(array_type, headlock.c_data_model.CArray)
         assert array_type.base_type == DummyInt
 
     def test_create_fromCTypesObj_returnsWrapperAroundParam(self):
         ctype_array = (ct.c_int32 * 100)()
-        array = DummyInt[100](ctype_array)
+        array = DummyInt.array(100)(ctype_array)
         assert array.ctypes_obj == ctype_array
 
     def test_create_fromNoParam_returnsDefaultEntries(self):
-        array = DummyInt[100]()
+        array = DummyInt.array(100)()
         assert all(array.ctypes_obj[ndx] == 0 for ndx in range(100))
 
     def test_create_fromPyIterable_ok(self):
-        array = DummyInt[4](iter([11, 22, 33, 44]))
+        array = DummyInt.array(4)(iter([11, 22, 33, 44]))
         assert array.ctypes_obj[0] == 11
         assert array.ctypes_obj[1] == 22
         assert array.ctypes_obj[2] == 33
         assert array.ctypes_obj[3] == 44
 
     def test_len_returnsSizeOfObject(self):
-        array_type = DummyInt[44]
+        array_type = DummyInt.array(44)
         assert len(array_type) == 44
         assert len(array_type()) == 44
 
     def test_getVal_returnsListOfBaseTypeObjs(self):
-        array_obj = DummyInt[4]([0x11, 0x22, 0x33, 0x44])
+        array_obj = DummyInt.array(4)([0x11, 0x22, 0x33, 0x44])
         assert array_obj.val == [0x11, 0x22, 0x33, 0x44]
 
     def test_setVal_withEmptyIterable_resetsItemsToNullValue(self):
-        array = DummyInt[100]()
+        array = DummyInt.array(100)()
         array.val = []
         assert array == array.null_val
 
     def test_setVal_withIterable_convertsToCTypesObj(self):
-        array = DummyInt[100]()
+        array = DummyInt.array(100)()
         array.val = reversed(range(100))
         assert all(array.ctypes_obj[ndx] == 99-ndx
                    for ndx in range(100))
 
     def test_setVal_withShorterPyList_fillsRemainingEntriesWithDefaultEntries(self):
-        array = DummyInt[3]()
+        array = DummyInt.array(3)()
         array.val = [0x11, 0x22]
         assert array.val == [0x11, 0x22, 0]
 
     def test_setVal_onPyStrOfSameLen_ok(self):
-        array = DummyInt[2]()
+        array = DummyInt.array(2)()
         array.val = 'Xy'
         assert array.val == [ord('X'), ord('y')]
 
     def test_setVal_onSmallerPyStr_fillsRemainingBytesWith0(self):
-        array = DummyInt[4]()
+        array = DummyInt.array(4)()
         array.cstr = 'Xy'
         assert array.val == [ord('X'), ord('y'), 0, 0]
 
     def test_setVal_onBuf_setsRawData(self):
-        array = DummyShortInt[3]()
+        array = DummyShortInt.array(3)()
         array.val = bytearray.fromhex("11 22 33 44 55 66")
         assert array.val == [0x2211, 0x4433, 0x6655]
 
     def test_str_returnsStringWithZeros(self):
-        array = DummyShortInt[3]([ord('x'), ord('Y'), 0])
+        array = DummyShortInt.array(3)([ord('x'), ord('Y'), 0])
         assert str(array) == 'xY\0'
 
     def test_getCStr_onZeroTerminatedStr_returnsPyString(self):
-        array = DummyInt[3]([ord('X'), ord('y')])
+        array = DummyInt.array(3)([ord('X'), ord('y')])
         assert array.cstr == 'Xy'
 
     def test_getCStr_onNonZeroTerminatedStr_raisesValueError(self):
-        array = DummyInt[3]([ord('X'), ord('y'), ord('z')])
+        array = DummyInt.array(3)([ord('X'), ord('y'), ord('z')])
         with pytest.raises(ValueError):
             _ = array.cstr
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt[5]()
+        array = DummyInt.array(5)()
         array.cstr = 'X\0y'
         assert array.val == [ord('X'), 0, ord('y'), 0, 0]
 
     def test_setCStr_onTooLongPyStr_raisesValueError(self):
-        array = DummyInt[3]()
+        array = DummyInt.array(3)()
         with pytest.raises(ValueError):
             array.cstr = 'Xyz'
 
     def test_getItem_returnsObjectAtNdx(self):
-        array_obj = DummyShortInt[4]([1, 2, 3, 4])
+        array_obj = DummyShortInt.array(4)([1, 2, 3, 4])
         assert array_obj[2].ptr.val == array_obj.ptr.val+2*DummyShortInt.sizeof
 
     def test_getItem_onNegativeIndex_returnsElementFromEnd(self):
-        array_obj = DummyInt[4]([1, 2, 3, 4])
+        array_obj = DummyInt.array(4)([1, 2, 3, 4])
         assert array_obj[-1].ptr == array_obj[3].ptr
 
     def test_getItem_onSlice_returnsSubArray(self):
-        array_obj = DummyInt[4]([1, 2, 3, 4])
+        array_obj = DummyInt.array(4)([1, 2, 3, 4])
         sliced_array = array_obj[1:3]
-        assert type(sliced_array), DummyInt[2]
+        assert type(sliced_array), DummyInt.array(2)
         assert sliced_array.val == [2, 3]
         assert [obj.ptr for obj in sliced_array] == \
                [array_obj[1].ptr, array_obj[2].ptr]
 
     def test_getItem_onSliceWithSteps_raiseValueError(self):
-        array_obj = DummyInt[4]([1, 2, 3, 4])
+        array_obj = DummyInt.array(4)([1, 2, 3, 4])
         with pytest.raises(ValueError):
             array_obj[0:4:2]
 
     def test_getItem_onSliceWithNegativeBoundaries_returnsPartOfArrayFromEnd(self):
-        array_obj = DummyInt[5]([1, 2, 3, 4, 5])
+        array_obj = DummyInt.array(5)([1, 2, 3, 4, 5])
         sliced_array = array_obj[-3:-1]
         assert [obj.ptr for obj in sliced_array] == \
                [array_obj[2].ptr, array_obj[3].ptr]
 
     def test_getItem_onSliceWithOpenEnd_returnsPartOfArrayUntilEnd(self):
-        array_obj = DummyInt[4]([1, 2, 3, 4])
+        array_obj = DummyInt.array(4)([1, 2, 3, 4])
         sliced_array = array_obj[1:]
         assert [obj.ptr for obj in sliced_array] == \
                [array_obj[1].ptr, array_obj[2].ptr, array_obj[3].ptr]
 
     def test_getItem_onSliceWithOpenStart_returnsPartOfArrayFromStart(self):
-        array_obj = DummyInt[4]([1, 2, 3, 4])
+        array_obj = DummyInt.array(4)([1, 2, 3, 4])
         sliced_array = array_obj[:3]
         assert [obj.ptr for obj in sliced_array] == \
                [array_obj[0].ptr, array_obj[1].ptr, array_obj[2].ptr]
 
     def test_add_returnsPointer(self):
-        array = DummyInt[4]()
+        array = DummyInt.array(4)()
         assert array + 3 == array[3].ptr
 
     def test_repr_returnsClassNameAndContent(self):
-        assert repr(DummyInt[3]()) == 'DummyInt_3([0, 0, 0])'
+        assert repr(DummyInt.array(3)()) == 'DummyInt_3([0, 0, 0])'
 
     def test_sizeof_returnsSizeInBytes(self):
-        assert DummyShortInt[9].sizeof == 9*2
+        assert DummyShortInt.array(9).sizeof == 9*2
 
     def test_nullValue_ok(self):
-        assert DummyShortInt[3].null_val == [0, 0, 0]
+        assert DummyShortInt.array(3).null_val == [0, 0, 0]
 
     def test_iter_returnsIterOfElements(self):
         data = [0x11, 0x22, 0x33, 0x44]
-        array_obj = DummyInt[4](data)
+        array_obj = DummyInt.array(4)(data)
         assert list(array_obj) == list(map(DummyInt, data))
 
     def test_typeEq_onNoType_returnsFalse(self):
-        assert DummyInt[4] != 3
+        assert DummyInt.array(4) != 3
 
     def test_typeEq_onNoneCObjType_returnsFalse(self):
-        assert DummyInt[4] != int
+        assert DummyInt.array(4) != int
 
     def test_typeEq_onDifferentCObjType_returnsFalse(self):
-        assert DummyInt[4] != DummyInt
+        assert DummyInt.array(4) != DummyInt
 
     def test_typeEq_onDifferentTypeButSameSizeAndBaseType_returnsTrue(self):
-        type1 = DummyInt[4]
-        type2 = DummyInt[4]
+        type1 = DummyInt.array(4)
+        type2 = DummyInt.array(4)
         assert type1 is not type2
         assert type1 == type2
 
     def test_typeEq_onDifferentBaseType_returnsFalse(self):
-        type1 = DummyInt[4]
-        type2 = DummyInt[4]
+        type1 = DummyInt.array(4)
+        type2 = DummyInt.array(4)
         assert type1 is not type2
         assert type1 == type2
 
     def test_cDefinition_onRefDef_returnsWithRefDef(self):
-        assert DummyInt[12].c_definition('x') == 'DummyInt x[12]'
+        assert DummyInt.array(12).c_definition('x') == 'DummyInt x[12]'
 
     def test_cDefinition_onNoRefDef_returnsWithoutRefDef(self):
-        assert DummyInt[12].c_definition() == 'DummyInt [12]'
+        assert DummyInt.array(12).c_definition() == 'DummyInt [12]'
 
     def test_cDefinition_onArrayOfArrays_ok(self):
-        assert DummyInt[11][22].c_definition() == 'DummyInt [22][11]'
+        assert DummyInt.array(11).array(22).c_definition() \
+               == 'DummyInt [22][11]'
 
     def test_cDefinition_onArrayOfPtr_ok(self):
-        assert DummyInt.ptr[10].c_definition('x') == 'DummyInt *x[10]'
+        assert DummyInt.ptr.array(10).c_definition('x') == 'DummyInt *x[10]'
 
     def test_cDefinition_onPtrToArray_ok(self):
-        assert DummyInt[10].ptr.c_definition('x') == 'DummyInt (*x)[10]'
+        assert DummyInt.array(10).ptr.c_definition('x') == 'DummyInt (*x)[10]'
 
     @pytest.mark.parametrize('only_full_defs', [True, False])
     def test_iterReqCustomTypes_returnsReferredTypeElementaryTypes(self, only_full_defs):
@@ -785,7 +786,7 @@ class TestCArray:
             @classmethod
             def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
                 return iter(["test", "test2"])
-        assert list(X[3].iter_req_custom_types(only_full_defs)) \
+        assert list(X.array(3).iter_req_custom_types(only_full_defs)) \
                == ["test", "test2"]
 
 

@@ -215,10 +215,10 @@ class CParser:
             res = self.convert_type_from_cursor(type_crs.get_pointee()).ptr
         elif type_crs.kind == TypeKind.CONSTANTARRAY:
             element_type = self.convert_type_from_cursor(type_crs.element_type)
-            res = element_type[type_crs.element_count]
+            res = element_type.array(type_crs.element_count)
         elif type_crs.kind == TypeKind.INCOMPLETEARRAY:
             element_type = self.convert_type_from_cursor(type_crs.element_type)
-            res = element_type[0]
+            res = element_type.array(0)
         elif type_crs.kind == TypeKind.RECORD:
             res = self.convert_struct_from_cursor(type_crs.get_declaration())
         elif type_crs.kind == TypeKind.ENUM:

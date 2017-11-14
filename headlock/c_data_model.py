@@ -51,7 +51,7 @@ class CObjType(type):
     def ptr(self):
         return self._get_ptr_type()
 
-    def __getitem__(self, element_count):
+    def array(self, element_count):
         return CArray.typedef(self, element_count)
 
     @property
@@ -457,7 +457,8 @@ class CPointer(CObj):
                                        collections.abc.ByteString,
                                        memoryview)):
             lst = list(pyobj)
-            array = self.base_type[len(lst)](lst)
+            array_type = self.base_type.array(len(lst))
+            array = array_type(lst)
             self.val = array
             self._depends_on_ = array
         else:
@@ -524,7 +525,8 @@ class CPointer(CObj):
                 raise ValueError('Steps are not supported '
                                  'in slices of CPointers')
             start = ndx.start or 0
-            arr_ptr = self.base_type[ndx.stop - start].ptr((self + start).val)
+            arr_ptr_type = self.base_type.array(ndx.stop - start).ptr
+            arr_ptr = arr_ptr_type((self + start).val)
             arr = arr_ptr.ref
             arr._depends_on_ = self
             return arr
@@ -592,7 +594,7 @@ class CArray(CObj):
             stop = abs_ndx(ndx.stop if ndx.stop is not None
                            else self.element_count,
                            ext=1)
-            part_array_type = self.base_type[stop - start]
+            part_array_type = self.base_type.array(stop - start)
             return part_array_type(
                 self.ctypes_type.from_address(adr(start)),
                 _depends_on_=self)
