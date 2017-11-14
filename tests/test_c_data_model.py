@@ -1056,6 +1056,11 @@ class TestCStruct:
         TestStruct.delayed_def(('member', TestStruct.ptr))
         assert list(TestStruct.iter_req_custom_types()) == ['TestStruct']
 
+    def test_iterReqCustomTypes_onConstStruct_doesNotModifyReturnValue(self, DummyStruct):
+        TestStruct = headlock.c_data_model.CStruct.typedef('TestStruct')
+        ConstTestStruct = TestStruct.with_attr('const')
+        assert list(ConstTestStruct.iter_req_custom_types()) == ['TestStruct']
+
 
 @pytest.fixture
 def DummyCFunc():

@@ -224,6 +224,14 @@ class CObj(metaclass=CObjType):
     def c_definition(cls, refering_def=''):
         raise NotImplementedError('this is an abstract base class')
 
+    @classmethod
+    def _decorate_c_definition(cls, c_def):
+        if cls.has_attr('const'):
+            c_def = 'const ' + c_def
+        if cls.has_attr('volatile'):
+            c_def = 'volatile ' + c_def
+        return c_def
+
     def _set_val(self, pyobj):
         if isinstance(pyobj, CObj):
             self.val = pyobj.val
@@ -326,12 +334,10 @@ class CVoid(CObj):
 
     @classmethod
     def c_definition(cls, refering_def=''):
-        prefix = ('const ' if cls.has_attr('const') else '')
+        result = cls._decorate_c_definition('void')
         if refering_def:
-            return prefix + 'void ' + refering_def
-        else:
-            return prefix + 'void'
-
+            result += ' ' + refering_def
+        return result
 
 class CInt(CObj):
 
@@ -372,10 +378,10 @@ class CInt(CObj):
 
     @classmethod
     def c_definition(cls, refering_def=''):
-        return ('const ' if cls.has_attr('const') else '') + \
-               ('volatile ' if cls.has_attr('volatile') else '') + \
-               (cls.c_name or cls.__name__) + \
-               ((' ' + refering_def) if refering_def else '')
+        result = cls._decorate_c_definition(cls.c_name or cls.__name__)
+        if refering_def:
+            result += ' ' + refering_def
+        return result
 
     def __int__(self):
         return self.val
@@ -530,13 +536,10 @@ class CPointer(CObj):
 
     @classmethod
     def c_definition(cls, refering_def=''):
-        ptr_def = '*' \
-                  + ('const ' if cls.has_attr('const') else '') \
-                  + ('volatile ' if cls.has_attr('volatile') else '') \
-                  + refering_def
+        result = '*' + cls._decorate_c_definition(refering_def)
         if cls.base_type.PRECEDENCE > cls.PRECEDENCE:
-            ptr_def = '(' + ptr_def + ')'
-        return cls.base_type.c_definition(ptr_def)
+            result = '(' + result + ')'
+        return cls.base_type.c_definition(result)
 
     @classmethod
     def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
@@ -653,10 +656,11 @@ class CArray(CObj):
 
     @classmethod
     def c_definition(cls, refering_def=''):
-        array_def = f'{refering_def}[{cls.element_count}]'
+        result = f'{refering_def}[{cls.element_count}]'
+        result = cls._decorate_c_definition(result)
         if cls.base_type.PRECEDENCE > cls.PRECEDENCE:
-            array_def = '(' + array_def + ')'
-        return cls.base_type.c_definition(array_def)
+            result = '(' + result + ')'
+        return cls.base_type.c_definition(result)
 
     @classmethod
     def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
@@ -788,8 +792,10 @@ class CStruct(CObj):
 
     @classmethod
     def c_definition(cls, refering_def=''):
-        space = ' ' if refering_def else ''
-        return f'struct {cls.c_name}{space}{refering_def}'
+        result = cls._decorate_c_definition(f'struct {cls.c_name}')
+        if refering_def:
+            result += ' ' + refering_def
+        return result
 
     @classmethod
     def c_definition_full(cls, refering_def=''):
@@ -813,12 +819,12 @@ class CStruct(CObj):
     def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
         if already_processed is None:
             already_processed = set()
-        if cls.__name__ not in already_processed:
-            already_processed.add(cls.__name__)
+        if cls.c_name not in already_processed:
+            already_processed.add(cls.c_name)
             for member in cls._members_.values():
                 yield from member.iter_req_custom_types(only_full_defs,
                                                         already_processed)
-            yield cls.__name__
+            yield cls.c_name
 
 
 class CEnum(CInt):
@@ -1000,6 +1006,13 @@ class CFunc(CObj):
         raise TypeError('Function objects do not support null vals')
 
     @classmethod
+    def _decorate_c_definition(cls, c_def):
+        if cls.has_attr('cdecl'):
+            return '__cdecl ' + super()._decorate_c_definition(c_def)
+        else:
+            return super()._decorate_c_definition(c_def)
+
+    @classmethod
     def c_definition(cls, refering_def=''):
         if len(cls.args) == 0:
             partype_strs = ('void',)
@@ -1007,8 +1020,7 @@ class CFunc(CObj):
             partype_strs = (arg.c_definition(f'p{ndx}')
                  for ndx, arg in enumerate(cls.args))
         rettype = cls.returns or CVoid
-        attr_strs = '__cdecl ' if cls.has_attr('cdecl') else ''
-        return rettype.c_definition(attr_strs + refering_def +
+        return rettype.c_definition(cls._decorate_c_definition(refering_def) +
                                     '('+', '.join(partype_strs)+')')
 
     @classmethod
