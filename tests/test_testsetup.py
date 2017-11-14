@@ -302,12 +302,25 @@ class TestTestSetup(object):
 
     def test_structWrapper_onContainedStruct_ensuresContainedStructDeclaredFirst(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir,
-            b'struct s2 { '
-            b'     struct s1 { int m; } s1; '
-            b'     struct s3 { int m; } s3;'
+            b'struct s2_t { '
+            b'     struct s1_t { int m; } s1; '
+            b'     struct s3_t { int m; } s3;'
             b'} ;'
-            b'void f(struct s2);',
+            b'void f(struct s2_t);',
             'inorder_defined_structs.c')
+        TSMock()
+
+    def test_structWrapper_onContainedStructPtr_ensuresNonPtrMembersDeclaredFirst(self, tmpdir):
+        TSMock = self.c_mixin_from(tmpdir,
+            b'struct outer_t;'
+            b'struct inner_t { '
+            b'     struct outer_t * outer_ptr;'
+            b'} inner_t; '
+            b'struct outer_t { '
+            b'     struct inner_t inner;'
+            b'} outer;'
+            b'void f(struct inner_t);',
+            'inorder_ptr_structs.c')
         TSMock()
 
     def test_enumWrapper_storesEnumDefInEnumCls(self, tmpdir):

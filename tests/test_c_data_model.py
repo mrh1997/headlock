@@ -588,9 +588,16 @@ class TestCPointer:
     def test_iterReqCustomTypes_returnsReferredTypeElementaryTypes(self):
         class X(DummyInt):
             @classmethod
-            def iter_req_custom_types(cls, already_processed=None):
+            def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
                 return iter(["test", "test2"])
         assert list(X.ptr.iter_req_custom_types()) == ["test", "test2"]
+
+    def test_iterReqCustomTypes_onOnlyFullDef_doesNotReturnReferredTypeElementaryTypes(self):
+        class X(DummyInt):
+            @classmethod
+            def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
+                raise AssertionError('Must Not be called')
+        assert list(X.ptr.iter_req_custom_types(only_full_defs=True)) == []
 
 
 class TestCArray:
@@ -772,12 +779,14 @@ class TestCArray:
     def test_cDefinition_onPtrToArray_ok(self):
         assert DummyInt[10].ptr.c_definition('x') == 'DummyInt (*x)[10]'
 
-    def test_iterReqCustomTypes_returnsReferredTypeElementaryTypes(self):
+    @pytest.mark.parametrize('only_full_defs', [True, False])
+    def test_iterReqCustomTypes_returnsReferredTypeElementaryTypes(self, only_full_defs):
         class X(DummyInt):
             @classmethod
-            def iter_req_custom_types(cls, already_processed=None):
+            def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
                 return iter(["test", "test2"])
-        assert list(X[3].iter_req_custom_types()) == ["test", "test2"]
+        assert list(X[3].iter_req_custom_types(only_full_defs)) \
+               == ["test", "test2"]
 
 
 class TestCStruct:
@@ -1027,12 +1036,13 @@ class TestCStruct:
                    '\tstruct DummyStruct inner_strct;\n'
                    '}')
 
-    def test_iterReqCustomTypes_returnsNameOfStructBeforeNamesOfSubTypes(self, DummyStruct):
+    @pytest.mark.parametrize('only_full_defs', [True, False])
+    def test_iterReqCustomTypes_returnsNameOfStructBeforeNamesOfSubTypes(self, DummyStruct, only_full_defs):
         TestStruct = headlock.c_data_model.CStruct.typedef(
             'TestStruct',
             ('m1', DummyStruct), ('m2', DummyStruct))
-        assert list(TestStruct.iter_req_custom_types()) \
-               == ['DummyStruct', 'DummyStruct', 'TestStruct']
+        assert list(TestStruct.iter_req_custom_types(only_full_defs)) \
+               == ['DummyStruct', 'TestStruct']
 
     def test_iterReqCustomTypes_onSelfReferringStruct_returnsTypeOnlyOnce(self, DummyStruct):
         TestStruct = headlock.c_data_model.CStruct.typedef('TestStruct')
@@ -1234,7 +1244,7 @@ class TestCFunc:
         def define_type(elem_type_name):
             class ElemType(DummyInt):
                 @classmethod
-                def iter_req_custom_types(cls, already_processed=None):
+                def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
                     yield elem_type_name
             return ElemType
         test_func = headlock.c_data_model.CFunc.typedef(

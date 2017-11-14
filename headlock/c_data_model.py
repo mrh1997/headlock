@@ -308,7 +308,7 @@ class CObj(metaclass=CObjType):
             ptr[ndx] = new_val[ndx]
 
     @classmethod
-    def iter_req_custom_types(cls, already_processed=None):
+    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
         return iter([])
 
     @classmethod
@@ -539,8 +539,10 @@ class CPointer(CObj):
         return cls.base_type.c_definition(ptr_def)
 
     @classmethod
-    def iter_req_custom_types(cls, already_processed=None):
-        yield from cls.base_type.iter_req_custom_types(already_processed)
+    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
+        if not only_full_defs:
+            yield from cls.base_type.iter_req_custom_types(only_full_defs,
+                                                           already_processed)
 
 
 class CArray(CObj):
@@ -657,8 +659,9 @@ class CArray(CObj):
         return cls.base_type.c_definition(array_def)
 
     @classmethod
-    def iter_req_custom_types(cls, already_processed=None):
-        yield from cls.base_type.iter_req_custom_types(already_processed)
+    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
+        yield from cls.base_type.iter_req_custom_types(only_full_defs,
+                                                       already_processed)
 
 
 class CMember(object):
@@ -800,13 +803,14 @@ class CStruct(CObj):
         cls._members_order_ = [nm for nm,_ in members]
 
     @classmethod
-    def iter_req_custom_types(cls, already_processed=None):
+    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
         if already_processed is None:
             already_processed = set()
         if cls.__name__ not in already_processed:
             already_processed.add(cls.__name__)
             for member in cls._members_.values():
-                yield from member.iter_req_custom_types(already_processed)
+                yield from member.iter_req_custom_types(only_full_defs,
+                                                        already_processed)
             yield cls.__name__
 
 
@@ -1001,11 +1005,12 @@ class CFunc(CObj):
                                     '('+', '.join(partype_strs)+')')
 
     @classmethod
-    def iter_req_custom_types(cls, already_processed=None):
+    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
         for arg in cls.args:
-            yield from arg.iter_req_custom_types(already_processed)
+            yield from arg.iter_req_custom_types(only_full_defs,
+                                                 already_processed)
         yield from (cls.returns or CVoid).iter_req_custom_types(
-            already_processed)
+            only_full_defs, already_processed)
 
 
 class CFuncPointer(CPointer):
