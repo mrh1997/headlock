@@ -678,9 +678,11 @@ class CMember(object):
 
 class CStruct(CObj):
 
+    c_name = None
     _packing_ = None
     _members_ = {}
     _members_order_ = []
+    __NEXT_ANONYMOUS_ID__ = 1
 
     def __init__(self, *args, _depends_on_=None, **argv):
         if len(args) == 1 and isinstance_ctypes(args[0]):
@@ -701,9 +703,14 @@ class CStruct(CObj):
         if packing is not None:
             ct_dct['_pack_'] = packing
         ct_type = type(cls.__name__ + '_ctype', (ct.Structure,), ct_dct)
+        if not name:
+            name = f'__anonymous_{cls.__NEXT_ANONYMOUS_ID__}__'
+            cls.__NEXT_ANONYMOUS_ID__ += 1
         new_type = type(name or '<anonymous>',
                         (cls,),
-                        dict(_packing_=packing, ctypes_type=ct_type))
+                        dict(_packing_=packing,
+                             ctypes_type=ct_type,
+                             c_name=name))
         if members:
             new_type.delayed_def(*members)
         return new_type
@@ -782,7 +789,7 @@ class CStruct(CObj):
     @classmethod
     def c_definition(cls, refering_def=''):
         space = ' ' if refering_def else ''
-        return f'struct {cls.__name__}{space}{refering_def}'
+        return f'struct {cls.c_name}{space}{refering_def}'
 
     @classmethod
     def c_definition_full(cls, refering_def=''):

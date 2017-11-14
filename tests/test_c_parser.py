@@ -329,7 +329,8 @@ class TestCParser:
 
     def test_readFromCursor_onAnonymousStructInTypeDef_ok(self):
         struct_def = CStruct.typedef(None, ('a', bd.int))
-        self.assert_parses('typedef struct { int a; } typename;',
+        self.assert_parses('typedef struct strctname { int a; } typename;',
+                           exp_structs={'strctname': struct_def},
                            exp_typedefs={'typename': struct_def})
 
     def test_readFromCursor_onVarDefOfTypeStruct_ok(self):
@@ -341,17 +342,10 @@ class TestCParser:
 
     def test_readFromCursor_onVarDefOfAnonymousStruct_ok(self):
         struct_def = CStruct.typedef(None, ('a', bd.int))
+        next_anonymous_name = f'__anonymous_{CStruct.__NEXT_ANONYMOUS_ID__}__'
         self.assert_parses('extern struct { int a; } varname;',
+                           exp_structs={next_anonymous_name: struct_def},
                            exp_vars={'varname': struct_def})
-
-    def test_readFromCursor_onMultipleAnonymousStructs_ok(self):
-        struct1_def = CStruct.typedef(None, ('a', bd.int))
-        struct2_def = CStruct.typedef(None, ('b', struct1_def))
-        struct3_def = CStruct.typedef(None, ('c', bd.int))
-        self.assert_parses('typedef struct { struct { int a; } b; } varname1;\n'
-                           'typedef struct { int c; } varname2;\n',
-                           exp_typedefs={'varname1': struct2_def,
-                                         'varname2': struct3_def})
 
     def test_readFromCursor_onStructDefWithVarDef_ok(self):
         struct_def = CStruct.typedef('structname', ('a', bd.int))
@@ -359,17 +353,13 @@ class TestCParser:
                            exp_structs={'strctname': struct_def},
                            exp_vars={'varname': struct_def})
 
-    def test_readFromCursor_onAnonymousStructDef_ok(self):
-        struct_def = CStruct.typedef(None, ('a', bd.int))
-        self.assert_parses('extern struct { int a; } varname;',
-                           exp_vars={'varname': struct_def})
-
     def test_readFromCursor_onNestedStructDef_ok(self):
         inner_struct = CStruct.typedef('inner')
         outer_struct = CStruct.typedef(None, ('a', inner_struct))
-        self.assert_parses('extern struct { struct inner {} a; } varname;',
+        self.assert_parses('extern struct outer{ struct inner {} a; } varname;',
                            exp_vars={'varname': outer_struct},
-                           exp_structs={'inner': inner_struct})
+                           exp_structs={'inner': inner_struct,
+                                        'outer': outer_struct})
 
     def test_readFromCursor_onForwardRefOnly_ok(self):
         struct_def = CStruct.typedef('strctname')

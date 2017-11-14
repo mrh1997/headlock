@@ -115,4 +115,3 @@ The current limitations are
     - enum
     - union
     - float/double
-    - anonymous structs/enums/unions

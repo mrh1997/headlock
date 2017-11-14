@@ -38,8 +38,6 @@ Small (can be done by occassion)
 * set CMAKE_RUNTIME_OUTPUT_DIRECTORY in CMakefile
   (and check if CLion takes it over; see https://blog.jetbrains.com/clion/2014/09/clion-answers-frequently-asked-questions/)
 * enums are not supported yet
-* anonymous structs ("struct { ... } x;") are not handled correctly in *_mock
-  code generator.
 * Option to make warnings to errors (can only be done if cdecl warning can be moved away)
 
 

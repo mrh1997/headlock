@@ -810,9 +810,12 @@ class TestCStruct:
         assert issubclass(DummyStruct.member_short, DummyShortInt)
         assert issubclass(DummyStruct.member_int, DummyInt)
 
-    def test_typedef_onNameIsNone_returnsAnonymousStruct(self):
-        astrct = headlock.c_data_model.CStruct.typedef(None, ('m', DummyInt))
-        assert type(astrct()).__name__ == '<anonymous>'
+    def test_typedef_onNameIsNone_returnsAnonymousStructPlusUniqueId(self):
+        astrct1 = headlock.c_data_model.CStruct.typedef(None, ('m', DummyInt))
+        astrct2 = headlock.c_data_model.CStruct.typedef(None, ('m', DummyInt))
+        assert astrct1.__name__.startswith('__anonymous_')
+        assert astrct2.__name__.startswith('__anonymous_')
+        assert astrct1.__name__ != astrct2.__name__
 
     def test_create_fromCTypes_returnsWrappedCTypesObj(self, DummyStruct):
         ctypes_struct = DummyStruct.ctypes_type(
@@ -1009,6 +1012,10 @@ class TestCStruct:
 
     def test_cDefinition_onRefDef_returnsDefWithName(self, DummyStruct):
         assert DummyStruct.c_definition('x') == 'struct DummyStruct x'
+
+    def test_cDefinition_onDerivedClassName_usesOriginalNameForOutput(self, DummyStruct):
+        class DerivedStruct(DummyStruct): pass
+        assert DerivedStruct.c_definition() == 'struct DummyStruct'
 
     def test_cDefinitionFull_onEmptyStruct_ok(self):
         empty_struct = headlock.c_data_model.CStruct.typedef('strctname')

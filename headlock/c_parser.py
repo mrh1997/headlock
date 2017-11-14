@@ -171,8 +171,7 @@ class CParser:
             struct_type = self.structs[struct_crs.displayname]
         except KeyError:
             struct_type = CStruct.typedef(struct_crs.displayname)
-            if struct_crs.displayname:
-                self.structs[struct_crs.displayname] = struct_type
+            self.structs[struct_type.__name__] = struct_type
         else:
             if len(struct_type._members_) > 0:
                 return struct_type
@@ -199,10 +198,11 @@ class CParser:
         return enum_type
 
     def read_datatype_decl_from_cursor(self, cursor):
-        if cursor.kind == CursorKind.STRUCT_DECL:
-            self.convert_struct_from_cursor(cursor)
-        elif cursor.kind == CursorKind.ENUM_DECL:
-            self.convert_enum_from_cursor(cursor)
+        if cursor.displayname:
+            if cursor.kind == CursorKind.STRUCT_DECL:
+                self.convert_struct_from_cursor(cursor)
+            elif cursor.kind == CursorKind.ENUM_DECL:
+                self.convert_enum_from_cursor(cursor)
 
     def convert_type_from_cursor(self, type_crs):
         def is_function_proto(cursor):

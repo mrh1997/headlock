@@ -323,6 +323,13 @@ class TestTestSetup(object):
             'inorder_ptr_structs.c')
         TSMock()
 
+    def test_structWrapper_onAnonymousStruct_ok(self, tmpdir):
+        TSMock = self.c_mixin_from(tmpdir,
+                                   b'struct { int a; } var;',
+                                   'anonymous_structs.c')
+        with TSMock().__execute__() as ts:
+            assert type(ts.var) == list(ts.struct.__dict__.values())[0]
+
     def test_enumWrapper_storesEnumDefInEnumCls(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'enum enum_t { a };', 'enum.c')
         ts = TSMock()
