@@ -1,9 +1,5 @@
 Small (can be done by occassion)
 --------------------------------
-* replace
-    * TestSetup.__execute__() by __enter__/__exit__()
-    * TestSetup.__load__() by .__startup__()
-    * TestSetup.__unload__ by .__shutdown__()
 * provide method for allowing any object to be cast to a CObj of a specific type
   I.e. ts.task_xyz could be passed directly then (instead of ts.task_xyz.handle)
 * implicit cast buf() objects to pointers/array of type void/uint8_t

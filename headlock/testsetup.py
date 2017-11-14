@@ -1,4 +1,3 @@
-import contextlib
 import ctypes as ct
 import itertools
 import os
@@ -207,6 +206,7 @@ class TestSetup(BuildInDefs):
         if type(self) not in BUILD_CACHE:
             self.__build__()
             BUILD_CACHE.add(type(self))
+        self.__load__()
 
     @classmethod
     def _get_patches(cls):
@@ -390,6 +390,9 @@ class TestSetup(BuildInDefs):
             self.__unload__()
             raise
 
+    def __startup__(self):
+        self.__load__()
+
     @classmethod
     def c_mixin(cls, *source_files, **defines):
         this_class = None
@@ -435,17 +438,26 @@ class TestSetup(BuildInDefs):
         for name in cls.__parser.macros:
             setattr(cls, name, cls.__parser.macros[name])
 
-    def __unload__(self):
+    def __shutdown__(self):
         for event, args in reversed(self.__unload_events):
             event(*args)
+
+    def __unload__(self):
+        self.__shutdown__()
+        for name, cfunc_type in self.__parser.funcs.items():
+            delattr(self, name)
+        for name, cvar_type in self.__parser.vars.items():
+            delattr(self, name)
+        self._global_refs = dict()
         if self.__dll:
             ct.windll.kernel32.FreeLibrary(self.__dll._handle)
             self.__dll = None
 
-    @contextlib.contextmanager
-    def __execute__(self):
-        self.__load__()
-        yield self
+    def __enter__(self):
+        self.__startup__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.__unload__()
 
     def mock_fallback(self, funcname, *args):

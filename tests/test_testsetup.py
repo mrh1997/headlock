@@ -261,43 +261,71 @@ class TestTestSetup(object):
         with pytest.raises(ValueError):
             _ = ts.MACRONAME
 
-    @patch('headlock.testsetup.TestSetup.__load__')
-    @patch('headlock.testsetup.TestSetup.__unload__')
-    def test_execute_onCompilableCCode_callsLoadAndUnload(self, __load__, __unload__, tmpdir):
-        TSMock = self.c_mixin_from(tmpdir, b'', 'execute.c')
-        ts = TSMock()
-        with ts.__execute__() as returned_obj:
-            assert returned_obj == ts
-            ts.__load__.assert_called_once()
-            ts.__unload__.assert_not_called()
+    @patch('headlock.testsetup.TestSetup.__startup__')
+    def test_init_providesBuildAndLoadedButNotStartedDll(self, __startup__, tmpdir):
+        TS = self.c_mixin_from(tmpdir, b'int var;', 'init_calls_load.c')
+        ts = TS()
+        try:
+            __startup__.assert_not_called()
+            assert hasattr(ts, 'var')
+        finally:
+            ts.__unload__()
+
+    @patch('headlock.testsetup.TestSetup.__shutdown__')
+    def test_unload_doesAnImplicitShutdown(self, __shutdown__, tmpdir):
+        TS = self.c_mixin_from(tmpdir, b'int var;', 'unload_calls_shutdown.c')
+        ts = TS()
+        ts.__shutdown__.assert_not_called()
+        ts.__unload__()
+        ts.__shutdown__.assert_called_once()
+        assert not hasattr(ts, 'var')
+
+    def test_startup_doesAnImplicitLoad(self, tmpdir):
+        TS = self.c_mixin_from(tmpdir, b'', 'startup_calls_load.c')
+        ts = TS()
+        ts.__load__ = Mock()
+        ts.__startup__()
         ts.__load__.assert_called_once()
-        ts.__unload__.assert_called_once()
+
+    def test_contentmgr_onCompilableCCode_callsStartupAndShutdown(self, tmpdir):
+        TSMock = self.c_mixin_from(tmpdir, b'', 'contextmgr.c')
+        ts = TSMock()
+        ts.__startup__ = Mock(side_effect=ts.__startup__)
+        ts.__shutdown__ = Mock(side_effect=ts.__shutdown__)
+        with ts as ts2:
+            assert ts is ts2
+            ts.__startup__.assert_called_once()
+            ts.__shutdown__.assert_not_called()
+        ts.__startup__.assert_called_once()
+        ts.__shutdown__.assert_called_once()
+
+    def test_contentmgr_onCompilableCCode_catchesExceptions(self, tmpdir):
+        TSMock = self.c_mixin_from(tmpdir, b'', 'contextmgr_on_exception.c')
+        with pytest.raises(ValueError):
+            with TSMock() as ts:
+                raise ValueError();
 
     def test_funcWrapper_ok(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir,
                                    b'int func(int a, int b) { return a + b; }',
                                    'func.c')
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             assert ts.func(11, 22) == 33
 
     def test_varWrapper_ok(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'int var;', 'var.c')
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             ts.var.val = 11
             assert ts.var.val == 11
 
     def test_typedefWrapper_storesTypeDefInTypedefCls(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'typedef int td_t;', 'typedef.c')
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             assert issubclass(ts.td_t, CInt)
 
     def test_structWrapper_storesStructDefInStructCls(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'struct strct_t { };', 'struct.c')
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             assert issubclass(ts.struct.strct_t, CStruct)
 
     def test_structWrapper_onContainedStruct_ensuresContainedStructDeclaredFirst(self, tmpdir):
@@ -308,7 +336,7 @@ class TestTestSetup(object):
             b'} ;'
             b'void f(struct s2_t);',
             'inorder_defined_structs.c')
-        TSMock()
+        with TSMock(): pass
 
     def test_structWrapper_onContainedStructPtr_ensuresNonPtrMembersDeclaredFirst(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir,
@@ -321,25 +349,23 @@ class TestTestSetup(object):
             b'} outer;'
             b'void f(struct inner_t);',
             'inorder_ptr_structs.c')
-        TSMock()
+        with TSMock(): pass
 
     def test_structWrapper_onAnonymousStruct_ok(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir,
                                    b'struct { int a; } var;',
                                    'anonymous_structs.c')
-        with TSMock().__execute__() as ts:
+        with TSMock() as ts:
             assert type(ts.var) == list(ts.struct.__dict__.values())[0]
 
     def test_enumWrapper_storesEnumDefInEnumCls(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'enum enum_t { a };', 'enum.c')
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             assert issubclass(ts.enum.enum_t, CEnum)
 
     def test_mockVarWrapper_ok(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'extern int var;', 'mocked_var.c')
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             ts.var.val = 11
             assert ts.var.val == 11
 
@@ -347,8 +373,7 @@ class TestTestSetup(object):
         class TSMock(self.c_mixin_from(tmpdir, b'int func(int * a, int * b);',
                                        'mocked_func.c')):
             func_mock = Mock(return_value=33)
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             assert ts.func(11, 22) == 33
             TSMock.func_mock.assert_called_with(ts.int.ptr(11), ts.int.ptr(22))
 
@@ -356,8 +381,7 @@ class TestTestSetup(object):
         class TSMock(self.c_mixin_from(tmpdir, b'int func(int * a, int * b);',
                                        'mocked_func_fallback.c')):
             mock_fallback = Mock(return_value=33)
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             assert ts.func(11, 22) == 33
             TSMock.mock_fallback.assert_called_with('func', ts.int.ptr(11),
                                                     ts.int.ptr(22))
@@ -369,8 +393,7 @@ class TestTestSetup(object):
                                        b'   return mocked_func(p); }',
                                        'mocked_func_cwrapper.c')):
             mocked_func_mock = Mock(return_value=22)
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             assert ts.func(11) == 22
             TSMock.mocked_func_mock.assert_called_once_with(11)
 
@@ -378,8 +401,7 @@ class TestTestSetup(object):
         class TSMock(self.c_mixin_from(tmpdir, b'void unmocked_func();',
                                        'mocked_func_error.c')):
             pass
-        ts = TSMock()
-        with ts.__execute__():
+        with TSMock() as ts:
             with pytest.raises(MethodNotMockedError) as excinfo:
                 assert ts.mock_fallback('unmocked_func', 11, 22)
             assert "unmocked_func" in str(excinfo.value)
@@ -395,8 +417,7 @@ class TestTestSetup(object):
             raise AssertionError()
 
     def test_registerUnloadEvent_onRegisteredEvent_isCalledOnUnload(self):
-        ts = self.TSDummy()
-        with ts.__execute__():
+        with self.TSDummy() as ts:
             def on_unload():
                 calls.append('unloaded')
             ts.register_unload_event(on_unload)
@@ -404,15 +425,13 @@ class TestTestSetup(object):
         assert calls == ['unloaded']
 
     def test_registerUnloadEvent_onParams_arePassedWhenUnloaded(self):
-        ts = self.TSDummy()
-        with ts.__execute__():
+        with self.TSDummy() as ts:
             def on_unload(p1, p2):
                 assert p1 == 'PARAM1' and p2 == 2
             ts.register_unload_event(on_unload, "PARAM1", 2)
 
     def test_registerUnloadEvent_onMultipleEvents_areCalledInReversedOrder(self):
-        ts = self.TSDummy()
-        with ts.__execute__():
+        with self.TSDummy() as ts:
             def on_unload(p):
                 calls.append(p)
             ts.register_unload_event(on_unload, 1)

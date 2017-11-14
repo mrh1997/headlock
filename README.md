@@ -41,7 +41,9 @@ Explicitly Non-Goals Are:
 
 # Sample
 
-If your dummy.c (Module Under Test) looks like
+This piece of C-code contains a macros, a struct a function
+implementation and a function that is relying on
+(which should be mocked):
 
 ```c
 #include "underlying_module.h"
@@ -59,7 +61,7 @@ int func(struct ops_t * p)
 }
 ```
 
-You can access it from python like:
+You can access it from python through *headlock* like:
 
 ```python
 from headlock.testsetup import TestSetup
@@ -68,12 +70,12 @@ class TSSample(TestSetup.c_mixin('dummy.c', PY_MACRO=300)):
     def underlying_func_mock(self, param):
         return param.val + 4000
 
-with TSSample().__execute__() as ts:
+with TSSample() as ts:
     ops = ts.struct.ops_t(a=ts.C_MACRO, b=20)
     assert ts.func(ops.ptr).val == 4321
 ```
 
-This demonstrates:
+This demonstrates how:
  * You can handle different binaries of the same C-source per .py file
    (as each one is a TestSetup derived class instead of a module)
  * Every binary can be compiled with other parameters
