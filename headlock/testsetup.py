@@ -105,6 +105,8 @@ class TestSetup(BuildInDefs):
 
     __test__ = False   # avoid that pytest/nose/... collect this as test
 
+    __parser_factory__ = CParser
+
     ### provide structs with packing 1
 
     @classmethod
@@ -160,9 +162,10 @@ class TestSetup(BuildInDefs):
     @classmethod
     def __parse__(cls):
         root_dir = cls.get_root_dir()
-        cls.__parser = CParser(cls._predef_macros,
-                               cls.__get_include_dirs__(),
-                               list(map(str, cls.get_mingw_include_dirs())))
+        cls.__parser = cls.__parser_factory__(
+            cls._predef_macros,
+            cls.__get_include_dirs__(),
+            list(map(str, cls.get_mingw_include_dirs())))
         for srcfile in cls._base_source_files:
             abs_srcfile = os.path.join(root_dir, srcfile)
             cls.__parser.read(abs_srcfile, patches=cls._get_patches())

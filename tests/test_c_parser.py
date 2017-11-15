@@ -1,5 +1,5 @@
 import contextlib
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 import pytest
 from headlock.libclang.cindex import TranslationUnit
 from headlock.c_parser import CParser, MacroDef, ParseError
@@ -329,6 +329,13 @@ class TestCParser:
 
     def test_readFromCursor_onAnonymousStructInTypeDef_ok(self):
         struct_def = CStruct.typedef(None, ('a', bd.int))
+        self.assert_parses('typedef struct strctname { int a; } typename;',
+                           exp_structs={'strctname': struct_def},
+                           exp_typedefs={'typename': struct_def})
+
+    @patch('headlock.c_parser.CParser.DEFAULT_PACKING', new=16)
+    def test_readFromCursor_onCustomDefaultPacking_createsStructWithModifiedPacking(self):
+        struct_def = CStruct.typedef('strctname', ('a', bd.int), packing=16)
         self.assert_parses('typedef struct strctname { int a; } typename;',
                            exp_structs={'strctname': struct_def},
                            exp_typedefs={'typename': struct_def})

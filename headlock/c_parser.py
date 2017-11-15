@@ -141,6 +141,7 @@ class CParser:
 
     INLINE_ATTR_TEXT = 'converted-inline'
     CDECL_ATTR_TEXT = 'converted-cdecl'
+    DEFAULT_PACKING = None
 
     def __init__(self, predefined_macros=None, include_dirs=None,
                  sys_include_dirs=None):
@@ -170,7 +171,8 @@ class CParser:
         try:
             struct_type = self.structs[struct_crs.displayname]
         except KeyError:
-            struct_type = CStruct.typedef(struct_crs.displayname)
+            struct_type = CStruct.typedef(struct_crs.displayname,
+                                          packing=self.DEFAULT_PACKING)
             self.structs[struct_type.__name__] = struct_type
         else:
             if len(struct_type._members_) > 0:

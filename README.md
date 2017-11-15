@@ -109,10 +109,9 @@ The current limitations are
  - Requires LLVM. Has to be installed to
    ```C:\Program Files (x86)\LLVM```.
  - Requires CMake for creating the Makefiles. Has to be on ```PATH```.
- - Does not support specifying packing of structures
-   (```#pragma pack```). As the current application (embedded C)
-   requires a packing of 1 *headlock* assumes that **all** structues
-   are packed by a packing of 1.
+ - Does not support specifying packing of structures in C sources
+   (```#pragma pack```). As workaround it is possible to specify
+   packing on a per-C-file basis in the TestSetup.
  - No Support yet for:
     - enum
     - union
