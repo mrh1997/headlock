@@ -194,6 +194,7 @@ class TestSetup(BuildInDefs):
         cls.__globals = bases[0].__globals.copy()
         cls.__implementations = bases[0].__implementations.copy()
         cls.struct = copy.copy(bases[0].struct)
+        cls.union = cls.struct
         cls.enum = copy.copy(bases[0].enum)
         cls.__transunits__ = bases[0].__transunits__
         for base in reversed(bases[1:]):

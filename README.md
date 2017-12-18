@@ -94,25 +94,7 @@ This demonstrates how:
 
 # Status
 
-Currently this is pre-alpha (although it is already in production
-use). This means the API is **not** stable and currently has a lot of
-rough edges.
+Currently this is alpha.
 
-Furthermore currently there is no documentation at all,
-although this has the highest priority on the roadmap.
-
-The current limitations are
-
- - Works only with 32bit (Python and C)
- - Works only on Windows with MingW64
-   (the installation had to be configured as
-   ```i686-*-*-dwarf-rt_v5-*```)
- - Requires LLVM. Has to be installed to
-   ```C:\Program Files (x86)\LLVM```.
- - Does not support specifying packing of structures in C sources
-   (```#pragma pack```). As workaround it is possible to specify
-   packing on a per-C-file basis in the TestSetup.
- - No Support yet for:
-    - enum
-    - union
-    - float/double
+For a list of planned but not yet implemented features please refer to
+[Development Status](https://headlock.readthedocs.io/en/latest/development-status.html)

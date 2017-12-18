@@ -1,5 +1,21 @@
+Interface changing
+------------------
+ * Replace ts.__mem__ can ts.void.alloc_ptr(3)
+   (does not work yet; furthermore the keywork "alloc" has to be
+   implemented for pointers: ts.void.ptr.alloc(10)
+ * rework datamodel:
+   - replace all proxies by a single class that refers to a memory
+     location and a type object.
+   - All methods of the proxies are forwarded to the C type specific
+     type object.
+   - the type object is "bound" to a "environment"
+ * run __startup__ in __init__ instead of context (same with __shutdown__)
+   This allows much simpler demos.
+
 Small (can be done by occassion)
 --------------------------------
+* globale (nicht CModule) spezifische settings (preprocessor defines
+  sowie compilersettings wie z.B. toolchain selection) in TestSetup
 * provide method for non-CObjs to cast itself to a corresponding CObj.
   I.e. ts.task_xyz could be passed directly then (instead of ts.task_xyz.handle)
 * add support for further operations to CObj/CInt (i.e. mul / div on int)
@@ -21,6 +37,8 @@ Small (can be done by occassion)
 
 Medium
 ------
+* At the moment TestSetup.get_root_dir() has to be overwitten or the path to
+  the C-file has to be specified absolute 
 * create PyFunc which derives from CFunc and is used to wrap python funcs
 * when passing parameters to C-functions, do allow only correct implicit casts
   (i.e. int.ptr -> int.ptr.ptr is allowed now). explicit PyObj casts shall be
@@ -40,6 +58,7 @@ Medium
   type (i.e. cannot compare pointer to int)
 * CParser cannot read macros with &&, ||, ! operators
   (has to be converted to and/or/not)
+* wird "with ts:" verschachtelt aufgerufen, hängt sich headlock auf
 
 
 Major/Investigation necessary
