@@ -607,3 +607,8 @@ class TestCParser:
         parser = self.parse('void funcname(void);\n'
                             '__inline void funcname(void) { return; }')
         assert parser.funcs == {}
+
+    def test_read_withTooMuchCompileTimeErrors_doNotReturnAll(self):
+        with pytest.raises(ParseError) as exc:
+            self.parse('u a;' * 1000)
+        assert 10 < len(exc.value.errors) < 100

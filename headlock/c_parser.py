@@ -330,7 +330,7 @@ class CParser:
         if errors:
             raise ParseError([
                 (err.spelling, err.location.file.name, err.location.line)
-                for err in errors])
+                for err in errors if err.location.file is not None])
         self.read_from_cursor(tu.cursor)
         files = {os.path.normpath(name): open(name, 'rb').read()
                  for name, start, end in self.macro_locs.values()}
