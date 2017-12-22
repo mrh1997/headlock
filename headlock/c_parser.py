@@ -31,7 +31,7 @@ class MacroDef:
     REGEX_VAR = re.compile(r'\b(?P<varname>[A-Za-z_]\w*)'
                            r'(?P<attrs>\s*\.\s*[A-Za-z_]\w*)*', re.ASCII)
     REGEX_COMMENT = re.compile(r'/\*.*?\*/|//.*?$', re.DOTALL|re.MULTILINE)
-    REGEX_CAST = re.compile(r'\(\s*(?P<basetype>[A-Za-z_]\w+'
+    REGEX_CAST = re.compile(r'\(\s*(?P<basetype>[A-Za-z_]\w*'
                             r'(\s*\.\s*[A-Za-z_]\w+)*)'
                             r'\s*(?P<ptrs>(\*\s*)*)\)', re.ASCII)
 
@@ -94,9 +94,12 @@ class MacroDef:
             src_code = content[name_end:]
             add_resolver = r"self.\g<0>"
         def caster(mobj):
-            return '__Caster__({basetype}{ptrs}) ** '.format(
-                basetype=mobj["basetype"],
-                ptrs=mobj['ptrs'].replace('*', '.ptr'))
+            if params is not None and mobj['basetype'] in params:
+                return mobj['basetype']
+            else:
+                return '__Caster__({basetype}{ptrs}) ** '.format(
+                    basetype=mobj["basetype"],
+                    ptrs=mobj['ptrs'].replace('*', '.ptr'))
         src_code = src_code.replace('struct', 'struct.')
         src_code = src_code.replace('union', 'union.')
         src_code = src_code.replace('enum', 'enum.')

@@ -98,8 +98,11 @@ class TestMacroDef:
         self.assert_create_as('MACRO( a, p2 ,CCC,s )',
                               exp_params=('a', 'p2', 'CCC', 's'))
 
-    def test_createFromSrcCode_onReferenceToFuncParam_doNotResolve(self):
+    def test_createFromSrcCode_onReferenceToMacroParam_doNotResolve(self):
         self.assert_create_as('MACRO(a) a', 'a', exp_params=('a',))
+
+    def test_createFromSrcCode_onReferenceToParaenthizedMacroParam_doNotReplaceTypeCast(self):
+        self.assert_create_as('MACRO(a) 1 + (a)', '1 + (a)', exp_params=('a',))
 
     def test_get_onResolveStructAttr_ok(self):
         class Container:
