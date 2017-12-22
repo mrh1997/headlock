@@ -34,6 +34,12 @@ class MacroDef:
     REGEX_CAST = re.compile(r'\(\s*(?P<basetype>[A-Za-z_]\w*'
                             r'(\s*\.\s*[A-Za-z_]\w+)*)'
                             r'\s*(?P<ptrs>(\*\s*)*)\)', re.ASCII)
+    REGEX_INTLITERAL = re.compile(r'('
+                                  r'0[xX](?P<hex>[0-9A-Fa-f]+)|'
+                                  r'0+(?P<oct>\d+)|'
+                                  r'(?P<dec>\d+)|'
+                                  r'0[bB](?P<bin>[01]+)'
+                                  r')[uU]?[Ll]{0,2}', re.ASCII)
 
     class Caster:
         """
@@ -100,10 +106,20 @@ class MacroDef:
                 return '__Caster__({basetype}{ptrs}) ** '.format(
                     basetype=mobj["basetype"],
                     ptrs=mobj['ptrs'].replace('*', '.ptr'))
+        def intliteral(mobj):
+            if mobj['dec']:
+                return mobj['dec']
+            elif mobj['hex']:
+                return '0x' + mobj['hex']
+            elif mobj['oct']:
+                return '0o' + mobj['oct']
+            elif mobj['bin']:
+                return '0b' + mobj['bin']
         src_code = src_code.replace('struct', 'struct.')
         src_code = src_code.replace('union', 'union.')
         src_code = src_code.replace('enum', 'enum.')
         src_code = src_code.replace('->', '.ref.')
+        src_code = cls.REGEX_INTLITERAL.sub(intliteral, src_code)
         src_code = cls.REGEX_VAR.sub(add_resolver, src_code)
         src_code = cls.REGEX_CAST.sub(caster, src_code)
         src_code = cls.REGEX_COMMENT.sub(' ', src_code)

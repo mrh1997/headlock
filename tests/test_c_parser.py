@@ -51,6 +51,24 @@ class TestMacroDef:
     def test_createFromSrcCode_onSimpleInteger_returnsInt(self):
         self.assert_create_as('MACRO  3', '3')
 
+    def test_createFromSrcCode_onOctalInteger_returnsConvertedIntLiteral(self):
+        self.assert_create_as('MACRO  0010', '0o0010')
+
+    def test_createFromSrcCode_onDecimalIntegerWithPostfix_returnsConvertedIntLiteral(self):
+        self.assert_create_as('MACRO  19u', '19')
+
+    def test_createFromSrcCode_onOctalIntegerWithPostfix_returnsConvertedIntLiteral(self):
+        self.assert_create_as('MACRO  0077u', '0o77')
+
+    def test_createFromSrcCode_onBinaryIntegerWithPostfix_returnsConvertedIntLiteral(self):
+        self.assert_create_as('MACRO  0b101u', '0b101')
+
+    def test_createFromSrcCode_onUpperCaseIntLinteral_returnsConvertedIntLiteral(self):
+        self.assert_create_as('MACRO  0X101U', '0x101')
+
+    def test_createFromSrcCode_onExtendedIntLinteral_returnsConvertedIntLiteral(self):
+        self.assert_create_as('MACRO  1ull', '1')
+
     def test_createFromSrcCode_onComplexIntExpression_returnsResultInt(self):
         self.assert_create_as('MACRO (4*3 - 2) * 2', '(4*3-2)*2')
 
