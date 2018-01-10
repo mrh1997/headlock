@@ -35,12 +35,17 @@ Small (can be done by occassion)
   (and check if CLion takes it over; see https://blog.jetbrains.com/clion/2014/09/clion-answers-frequently-asked-questions/)
 * enums are not supported yet
 * Option to make warnings to errors (can only be done if cdecl warning can be moved away)
+* Add ``__set__()`` to CObj type which throws error to ensures that 
+  ``ts.global = 3`` or ``ts.struct.x.y = 3`` fails 
 
 
 Medium
 ------
 * create PyFunc which derives from CFunc and is used to wrap python funcs
-* revert __build__() to SOURCE_FILES, DEFINES and INCLUDE_DIRS
+* revert c_mixin() to decorator for classes (``@link(c_lib(*srcs, **defs))``).
+  provide "delayed_link()" for linking at first instantiation.
+  Furtermore provide ``c_lib().derive(*srcs, **defs)`` for creating slightly 
+  modified versions 
 * when passing parameters to C-functions, do allow only correct implicit casts
   (i.e. int.ptr -> int.ptr.ptr is allowed now). explicit PyObj casts shall be
   always OK. "cobj.val = cobj" shall correspond to explicit casts
@@ -63,7 +68,7 @@ Medium
   teststep (as mocks.c files are not created when CMakeFile will be processed)
 * distinguish public and private dependencies in modules_defs
   (defines from public dependencies need to be included no matter if the
-  file is mocked or not).
+  file is mocked or  not).
 * CParser cannot read macros with &&, ||, ! operators
   (has to be converted to and/or/not)
 
