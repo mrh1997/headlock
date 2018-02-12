@@ -878,6 +878,15 @@ class TestCStruct:
         assert struct.member_int.ptr == struct['member_int'].ptr
         assert struct.member_short.ptr == struct['member_short'].ptr
 
+    @pytest.mark.parametrize('name', [
+        'val', 'ptr', 'typedef', 'c_definition', 'sizeof'])
+    def test_CMemberGet_onReservedName_isNotEnabled(self, name):
+        struct = headlock.c_data_model.CStruct.typedef(
+            'StructWithReservedMemberNames',
+            (name, DummyInt))
+        struct_inst = struct([0])
+        assert getattr(struct_inst, name) != 0
+
     def test_getVal_returnsDictOfVals(self, DummyStruct):
         struct = DummyStruct(1, 2)
         assert struct.val == {'member_int':1, 'member_short':2, 'member_int2':0}

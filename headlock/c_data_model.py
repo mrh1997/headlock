@@ -811,7 +811,8 @@ class CStruct(CObj):
     @classmethod
     def delayed_def(cls, *members):
         for name, _ in members:
-            setattr(cls, name, CMember(name))
+            if not hasattr(cls, name):
+                setattr(cls, name, CMember(name))
         cls.ctypes_type._fields_ = [(nm, cobj.ctypes_type)
                                     for nm, cobj in members]
         cls._members_ = dict(members)
