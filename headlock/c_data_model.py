@@ -217,9 +217,6 @@ class CObj(metaclass=CObjType):
     def _get_null_val(cls):
         raise NotImplementedError('this is an abstract base class')
 
-    def _get_val(self):
-        raise NotImplementedError('this is an abstract base class')
-
     @classmethod
     def c_definition(cls, refering_def=''):
         raise NotImplementedError('this is an abstract base class')
@@ -232,6 +229,9 @@ class CObj(metaclass=CObjType):
             c_def = 'volatile ' + c_def
         return c_def
 
+    def _get_val(self):
+        raise NotImplementedError('this is an abstract base class')
+
     def _set_val(self, pyobj):
         if isinstance(pyobj, CObj):
             self.val = pyobj.val
@@ -241,7 +241,13 @@ class CObj(metaclass=CObjType):
             except TypeError:
                 raise ValueError(f'{pyobj!r} cannot be converted to {self!r}')
 
-    val = property(_get_val, _set_val)
+    @property
+    def val(self):
+        return self._get_val()
+
+    @val.setter
+    def val(self, pyobj):
+        self._set_val(pyobj)
 
     def __eq__(self, other):
         if isinstance(other, CObj):
@@ -352,12 +358,10 @@ class CInt(CObj):
     def _get_null_val(cls):
         return 0
 
-    @property
-    def val(self):
+    def _get_val(self):
         return self.ctypes_obj.value
 
-    @val.setter
-    def val(self, pyobj):
+    def _set_val(self, pyobj):
         if self.has_attr('const') and self._initialized:
             raise WriteProtectError()
         if pyobj is None:
@@ -436,12 +440,10 @@ class CPointer(CObj):
                and cls.base_type._type_equality(other.base_type, recursions) \
                and cls.c_attributes == other.c_attributes
 
-    @property
-    def val(self):
+    def _get_val(self):
         return self._as_ctypes_int.value
 
-    @val.setter
-    def val(self, pyobj):
+    def _set_val(self, pyobj):
         if self.has_attr('const') and self._initialized:
             raise WriteProtectError()
         elif isinstance(pyobj, int):
@@ -462,7 +464,7 @@ class CPointer(CObj):
             self.val = array
             self._depends_on_ = array
         else:
-            super(CPointer, self)._set_val(pyobj)
+            super()._set_val(pyobj)
 
     @property
     def cstr(self):
@@ -610,19 +612,17 @@ class CArray(CObj):
     def __iter__(self):
         return (self[ndx] for ndx in range(self.element_count))
 
-    @property
-    def val(self):
+    def _get_val(self):
         return [self[ndx].val for ndx in range(self.element_count)]
 
-    @val.setter
-    def val(self, new_val):
+    def _set_val(self, new_val):
         if isinstance(new_val, str):
             if len(new_val) > len(self):
                 raise ValueError('string is too long')
             self.val = list(map(ord, new_val)) + [0]*(len(self) - len(new_val))
         else:
             try:
-                super(CArray, self)._set_val(memoryview(new_val))
+                super()._set_val(memoryview(new_val))
             except TypeError:
                 ndx = 0
                 for ndx, val in enumerate(new_val):
@@ -747,13 +747,11 @@ class CStruct(CObj):
         else:
             self.val = dict(zip(self._members_order_, new_tuple))
 
-    @property
-    def val(self):
+    def _get_val(self):
         return {name: cobj.val
                 for name, cobj in zip(self._members_order_, self)}
 
-    @val.setter
-    def val(self, new_val):
+    def _set_val(self, new_val):
         try:
             self.raw = memoryview(new_val)
         except TypeError:
@@ -972,12 +970,10 @@ class CFunc(CObj):
         ptr_ptr = ct.pointer(self.ctypes_obj)
         return ct.cast(ptr_ptr, ct.POINTER(ct.c_int)).contents
 
-    @property
-    def val(self):
+    def _get_val(self):
         raise TypeError()
 
-    @val.setter
-    def val(self, new_val):
+    def _set_val(self, new_val):
         raise TypeError()
 
     @property
