@@ -980,7 +980,6 @@ class CFunc(CObj):
     def sizeof(self):
         raise TypeError('cannot retrieve size of c/python function')
 
-
     def __repr__(self):
         if self.language == 'C':
             return f"{type(self).__name__}(<dll function '{self.name}')"
@@ -1032,6 +1031,16 @@ class CFunc(CObj):
 
 
 class CFuncPointer(CPointer):
+
+    def __init__(self, init_obj, _depends_on_=None):
+        if callable(init_obj) and not isinstance_ctypes(init_obj) and \
+                not isinstance(init_obj, CObj):
+            func_obj = self.base_type(init_obj)
+            if _depends_on_ is None:
+                _depends_on_ = func_obj
+            super().__init__(func_obj.ptr, _depends_on_=_depends_on_)
+        else:
+            super().__init__(init_obj, _depends_on_=_depends_on_)
 
     def __call__(self, *args):
         return self.ref(*args)

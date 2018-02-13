@@ -1235,10 +1235,14 @@ class TestCFunc:
         with pytest.raises(TypeError):
             DummyCFunc.sizeof()
 
-    def test_getPtr_onPyCallback_returnsFuncPtr(self, dummy_callback):
+    def test_getPtr_onPyCallback_returnsCFuncPointer(self, dummy_callback):
         func_ptr = dummy_callback.ptr
         assert isinstance(func_ptr, headlock.c_data_model.CFuncPointer)
         assert func_ptr(0, 0, 0).val == 1
+
+    def test_getPtr_onPyCallback_setsDependsOn(self, dummy_callback):
+        func_ptr = dummy_callback.ptr
+        assert func_ptr._depends_on_ is dummy_callback
 
     def test_getPtr_onCFunc_returnsCFuncPointer(self, abs_func):
         func_ptr = abs_func.ptr
@@ -1285,6 +1289,20 @@ class TestCFuncPointer:
         assert func_ptr.ctypes_type == DummyCFunc.ctypes_type
         assert func_ptr.__name__ == DummyCFunc.__name__ + '_ptr'
 
+    def test_create_fromPyCallable_returnPyCallbackFuncPtr(self, DummyCFunc):
+        def py_dummy_callback(*args):
+            assert args == (DummyInt(1), DummyShortInt(2), DummyInt(3))
+            return 4
+        dummy_callback = DummyCFunc.ptr(py_dummy_callback)
+        del py_dummy_callback   # ensure that there is another ref to the func
+        assert dummy_callback.ref.ctypes_obj(1, 2, 3) == 4
+
+    def test_create_fromPyCallable_setsDependsOn(self):
+        def py_func(): pass
+        func_ptr_type = headlock.c_data_model.CFunc.typedef().ptr
+        func_ptr = func_ptr_type(py_func)
+        assert func_ptr._depends_on_.language == 'PYTHON'
+
     def test_ref_returnsObjOfTypeCFunc(self, dummy_callback):
         func_ptr = dummy_callback.ptr
         assert isinstance(func_ptr.ref, headlock.c_data_model.CFunc)
@@ -1307,11 +1325,19 @@ class TestCFuncPointer:
         func_ptr = dummy_callback.ptr
         assert func_ptr(11, 22, 33) == 1
 
+    @pytest.mark.parametrize('repeat', range(100))
+    def test_call_repeatedlyOnPyCallback_preservesReference(self, repeat):
+        def py_func(): pass
+        func_ptr_type = headlock.c_data_model.CFunc.typedef().ptr
+        func_ptr = func_ptr_type(py_func)
+        for c in range(100):
+            func_ptr()
+
     def test_cDefinition_withFuncName_returnsFuncNameWithStarInBrackets(self):
         func_ptr = headlock.c_data_model.CFunc.typedef().ptr
         assert func_ptr.c_definition('f') == 'void (*f)(void)'
 
-    def test_cDefinition_withoutFuncName_returnsOnylStar(self):
+    def test_cDefinition_withoutFuncName_returnsOnlyStar(self):
         func_ptr = headlock.c_data_model.CFunc.typedef().ptr
         assert func_ptr.c_definition() == 'void (*)(void)'
 
