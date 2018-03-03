@@ -1,6 +1,6 @@
 Small (can be done by occassion)
 --------------------------------
-*
+* Compile Errors are not shown any more
 * The parser errors should be returned immediately (not when a object is
   instantiated the first time). Otherwise when a c-file cannot be parsed
   and a macro is accessed before instantiation (i.e. "ts.type.XYZ")

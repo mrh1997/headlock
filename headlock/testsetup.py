@@ -6,6 +6,8 @@ import re
 import subprocess
 import sys
 import weakref
+import abc
+from collections import namedtuple
 
 from pathlib import Path
 
@@ -98,6 +100,75 @@ class CustomTypeContainer:
     pass
 
 
+def get_mingw_dir():
+    mingw64_dir = Path(os.environ.get('MINGW64_DIR', DEFAULT_MINGW64_DIR))
+    envs = list(mingw64_dir.glob(r'i686-*-*-dwarf-rt_v5-*\mingw32'))
+    if not envs:
+        raise BuildError(f'no MinGW64 found in {mingw64_dir} '
+                         f'(see MINGW64_DIR environment variable)')
+    envs.sort()
+    return envs[-1]
+
+
+CModCompileParams = namedtuple(
+    'CModCompileParams',
+    'subsys_name abs_src_filename abs_incl_dirs predef_macros')
+
+
+class CModuleDecoratorBase:
+    """
+    This is a class-decorator, that creates a derived class from a TestSetup
+    which is extended by a C-Module.
+    """
+
+    def __call__(self, parent_cls):
+        class SubCls(parent_cls):
+            _block_init_subclass = True
+            @classmethod
+            def __get_c_modules__(cls):
+                yield from super(SubCls, cls).__get_c_modules__()
+                yield from self.iter_compile_params(cls)
+        del SubCls._block_init_subclass
+        SubCls.__name__ = parent_cls.__name__
+        SubCls.__module__ = parent_cls.__module__
+        SubCls._init_subclass_impl_()
+        return SubCls
+
+    @abc.abstractmethod
+    def iter_compile_params(self, cls): ...
+
+
+class CModule(CModuleDecoratorBase):
+    """
+    This is a standard implementation for CModuleDecoratorBase, that allows
+    multiple source-filenames and parametersets to be combined into one module.
+    """
+
+    def __init__(self, *src_filenames, **predef_macros):
+        self.src_filenames = list(map(Path, src_filenames))
+        self.predef_macros = predef_macros
+
+    def get_incl_dirs(self):
+        return []
+
+    def get_fqn(self, cls):
+        rev_qualname = '.'.join(reversed(cls.__qualname__.split('.')))
+        return f'{self.src_filenames[0].stem}.{rev_qualname}.{cls.__module__}'
+
+    def iter_compile_params(self, cls):
+        incl_dirs = self.get_incl_dirs()
+        for src_filename in self.src_filenames:
+            yield CModCompileParams(self.get_fqn(cls),
+                                    self.resolve_path(src_filename, cls),
+                                    [self.resolve_path(incl_dir, cls)
+                                     for incl_dir in incl_dirs],
+                                    self.predef_macros)
+
+    def resolve_path(self, filename, cls):
+        mod = sys.modules[cls.__module__]
+        return Path(mod.__file__, filename)
+
+
 class TestSetup(BuildInDefs):
 
     _BUILD_DIR_ = 'cmake-build-debug'
@@ -110,18 +181,8 @@ class TestSetup(BuildInDefs):
     ### provide structs with packing 1
 
     @classmethod
-    def get_mingw_dir(cls):
-        mingw64_dir = Path(os.environ.get('MINGW64_DIR', DEFAULT_MINGW64_DIR))
-        envs = list(mingw64_dir.glob(r'i686-*-*-dwarf-rt_v5-*\mingw32'))
-        if not envs:
-            raise BuildError(f'no MinGW64 found in {mingw64_dir} '
-                             f'(see MINGW64_DIR environment variable)')
-        envs.sort()
-        return envs[-1]
-
-    @classmethod
-    def get_mingw_include_dirs(cls):
-        yield cls.get_mingw_dir() / 'i686-w64-mingw32' / 'include'
+    def __get_c_modules__(cls):
+        return []
 
     @classmethod
     def get_ts_abspath(cls):
@@ -142,14 +203,13 @@ class TestSetup(BuildInDefs):
 
     @classmethod
     def get_ts_name(cls):
-        if len(cls._base_source_files) == 0:
+        mods = list(cls.__get_c_modules__())
+        if len(mods) == 0:
             return cls.__name__
         else:
-            c_files = [f for f in cls._base_source_files
-                       if f.lower().endswith('.c')]
-            mainfile = c_files[0] if c_files else cls._base_source_files[0]
-            main, _ = os.path.splitext(os.path.basename(mainfile))
-            return main + '_' + cls.__name__
+            c_mods = [m for m in mods if m.abs_src_filename.suffix == '.c']
+            mainfile = (c_mods or mods)[0].abs_src_filename
+            return mainfile.stem + '_' + cls.__name__
 
     @classmethod
     def get_mock_proxy_path(cls):
@@ -161,20 +221,31 @@ class TestSetup(BuildInDefs):
 
     @classmethod
     def __parse__(cls):
-        root_dir = cls.get_root_dir()
+        def extend(base_list, new_entries):
+                for entry in new_entries:
+                    if entry not in base_list:
+                        base_list.append(entry)
+        abs_incl_dirs = []
+        predef_macros = {}
+        for mod in cls.__get_c_modules__():
+            extend(abs_incl_dirs, mod.abs_incl_dirs)
+            predef_macros.update(mod.predef_macros)
+        sys_incl_dirs = [get_mingw_dir() / 'i686-w64-mingw32/include']
         cls.__parser = cls.__parser_factory__(
-            cls._predef_macros,
-            cls.__get_include_dirs__(),
-            list(map(str, cls.get_mingw_include_dirs())))
-        for srcfile in cls._base_source_files:
-            abs_srcfile = os.path.join(root_dir, srcfile)
-            cls.__parser.read(abs_srcfile, patches=cls._get_patches())
+            predef_macros,
+            map(str, abs_incl_dirs),
+            map(str, sys_incl_dirs))
+        for mod in cls.__get_c_modules__():
+            cls.__parser.read(str(mod.abs_src_filename),
+                              patches=cls._get_patches(sys_incl_dirs))
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        if not hasattr(cls, '_block_init_subclass'):
+            cls._init_subclass_impl_()
 
-        cls._base_source_files = list()
-        cls._predef_macros = {}
+    @classmethod
+    def _init_subclass_impl_(cls):
         cls._delayed_exc = None
 
         try:
@@ -212,10 +283,10 @@ class TestSetup(BuildInDefs):
         self.__load__()
 
     @classmethod
-    def _get_patches(cls):
+    def _get_patches(cls, sys_incl_dirs):
         # fix _mingw.h (it contains "#define __attribute__()  /* nothing */
         # which makes __attribute__((annotate("..."))) not work any more)
-        mingw_h_paths = (d / '_mingw.h' for d in cls.get_mingw_include_dirs())
+        mingw_h_paths = (d / '_mingw.h' for d in sys_incl_dirs)
         [mingw_h_path] = filter(Path.exists, mingw_h_paths)
         patches = {str(mingw_h_path):
                    ATTR_MACRO_DEF.sub(rb'#define __attribute__REDIRECTED__',
@@ -225,18 +296,6 @@ class TestSetup(BuildInDefs):
     @classmethod
     def __logger__(cls):
         return None
-
-    @classmethod
-    def __get_include_dirs__(cls):
-        return []
-
-    @classmethod
-    def __add_source_file__(self, file_name):
-        self._base_source_files.append(file_name)
-
-    @classmethod
-    def __add_macro__(self, name, value=''):
-        self._predef_macros[name] = value
 
     def __build__(self):
         parser = self.__parser
@@ -309,11 +368,12 @@ class TestSetup(BuildInDefs):
             cmakelist.set('add_library', key_param=ts_name,
                           params='SHARED' + src_files_str)
 
+            predef_macros = self.__parser.predefined_macros
             defines_str = ''.join(
                 '\n    ' + cmakelist.escape(name + ('='+str(val)
                                                     if val is not None
                                                     else ''))
-                for name, val in sorted(self._predef_macros.items()))
+                for name, val in sorted(predef_macros.items()))
             cmakelist.set('target_compile_definitions', key_param=ts_name,
                           params='PUBLIC' + defines_str)
 
@@ -328,7 +388,7 @@ class TestSetup(BuildInDefs):
 
         def build_makefile():
             mingw_path_env = os.environ.copy()
-            mingw_path_env['PATH'] = str(self.get_mingw_dir() / 'bin') \
+            mingw_path_env['PATH'] = str(get_mingw_dir() / 'bin') \
                                      + ';' + mingw_path_env['PATH']
             try:
                 completed_run = subprocess.run(
@@ -352,7 +412,7 @@ class TestSetup(BuildInDefs):
         def build_dll():
             try:
                 completed_proc = subprocess.run(
-                    [str(self.get_mingw_dir() / 'bin' / 'mingw32-make'),
+                    [str(get_mingw_dir() / 'bin' / 'mingw32-make'),
                      self.get_ts_name()],
                     cwd=self.get_build_dir(),
                     encoding='ascii',
@@ -395,24 +455,6 @@ class TestSetup(BuildInDefs):
 
     def __startup__(self):
         self.__load__()
-
-    @classmethod
-    def c_mixin(cls, *source_files, **defines):
-        this_class = None
-        def __parse__(cls):
-            for name, content in defines.items():
-                cls.__add_macro__(name, content)
-            for source_file in source_files:
-                cls.__add_source_file__(source_file)
-            super(cls if this_class is None else this_class, cls).__parse__()
-        if source_files:
-            [name, _] = os.path.splitext(os.path.basename(source_files[0]))
-        else:
-            name = 'TSUnnamed'
-        this_class = type(name.capitalize(),
-                         (cls,),
-                         {'__parse__': classmethod(__parse__)})
-        return this_class
 
     def __load_mock(self, name, cfunc_type):
         self_weakref = weakref.ref(self)
