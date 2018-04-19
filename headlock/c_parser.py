@@ -176,7 +176,7 @@ class CParser:
             forceinline=annotate(self.INLINE_ATTR_TEXT),
             inline=annotate(self.INLINE_ATTR_TEXT))
         self.macro_locs = {}
-        self.macros = {nm: MacroDef.create_from_srccode(f'{nm} {content}')
+        self.macros = {nm: MacroDef.create_from_srccode(f'{nm} {content or ""}')
                        for nm, content in self.predefined_macros.items()}
         self.typedefs = {n: t for n, t in BuildInDefs.__dict__.items()
                          if isinstance(t, CObjType)}

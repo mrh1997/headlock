@@ -594,14 +594,21 @@ class TestCParser:
     def test_read_onPredefinedMacros_makeThemAvailableLikeUsualMacros(self):
         parser = self.parse('', MACRO='a')
         code_obj = compile("self.a", '<string>', 'eval')
-        assert parser.macros['MACRO'] \
-               == MacroDef('MACRO', code_obj)
+        assert parser.macros['MACRO'] == MacroDef('MACRO', code_obj)
+
+    def test_read_onPredefinedMacroIsEmptyStr_implicitlyConvertsToNone(self):
+        parser = self.parse('', MACRO='')
+        assert parser.macros['MACRO'] == MacroDef('MACRO', None)
 
     def test_read_onNonStrPredefinedMacro_implicitlyConvertToStr(self):
         parser = self.parse('', MACRO=1)
         code_obj = compile("1", '<string>', 'eval')
         assert parser.macros['MACRO'] \
                == MacroDef('MACRO', code_obj)
+
+    def test_read_onPredefinedMacroIsNone_setMacroToNone(self):
+        parser = self.parse('', MACRO=None)
+        assert parser.macros['MACRO'] == MacroDef('MACRO', None)
 
     @pytest.mark.parametrize('inline_keyword',
                              ['inline', 'forceinline', '__inline', '__forceinline'])

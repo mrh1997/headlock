@@ -261,6 +261,14 @@ class TestTestSetup(object):
         with pytest.raises(ValueError):
             _ = ts.MACRONAME
 
+    def test_create_onPredefinedMacro_providesMacroAsMember(self, tmpdir):
+        TSMock = self.c_mixin_from(tmpdir, b'', 'create_predef.c',
+                                   A=None, B=1, C='')
+        with TSMock() as ts:
+            assert ts.A is None
+            assert ts.B == 1
+            assert ts.C is None
+
     @patch('headlock.testsetup.TestSetup.__startup__')
     def test_init_providesBuildAndLoadedButNotStartedDll(self, __startup__, tmpdir):
         TS = self.c_mixin_from(tmpdir, b'int var;', 'init_calls_load.c')
@@ -270,6 +278,20 @@ class TestTestSetup(object):
             assert hasattr(ts, 'var')
         finally:
             ts.__unload__()
+
+    def test_build_onPredefinedMacros_passesMacrosToCompiler(self, tmpdir):
+        TSMock = self.c_mixin_from(tmpdir,
+                                   b'int a = A;\n'
+                                   b'int b = B 22;\n'
+                                   b'#if defined(C)\n'
+                                   b'int c = 33;\n'
+                                   b'#endif',
+                                   'build_predef.c',
+                                   A=11, B='', C=None)
+        with TSMock() as ts:
+            assert ts.a.val == 11
+            assert ts.b.val == 22
+            assert ts.c.val == 33
 
     @patch('headlock.testsetup.TestSetup.__shutdown__')
     def test_unload_doesAnImplicitShutdown(self, __shutdown__, tmpdir):
@@ -287,7 +309,7 @@ class TestTestSetup(object):
         ts.__startup__()
         ts.__load__.assert_called_once()
 
-    def test_contentmgr_onCompilableCCode_callsStartupAndShutdown(self, tmpdir):
+    def test_contextmgr_onCompilableCCode_callsStartupAndShutdown(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'', 'contextmgr.c')
         ts = TSMock()
         ts.__startup__ = Mock(side_effect=ts.__startup__)
@@ -299,7 +321,7 @@ class TestTestSetup(object):
         ts.__startup__.assert_called_once()
         ts.__shutdown__.assert_called_once()
 
-    def test_contentmgr_onCompilableCCode_catchesExceptions(self, tmpdir):
+    def test_contextmgr_onCompilableCCode_catchesExceptions(self, tmpdir):
         TSMock = self.c_mixin_from(tmpdir, b'', 'contextmgr_on_exception.c')
         with pytest.raises(ValueError):
             with TSMock() as ts:
