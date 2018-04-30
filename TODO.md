@@ -1,6 +1,11 @@
 Small (can be done by occassion)
 --------------------------------
-* provide method for allowing any object to be cast to a CObj of a specific type
+*
+* The parser errors should be returned immediately (not when a object is
+  instantiated the first time). Otherwise when a c-file cannot be parsed
+  and a macro is accessed before instantiation (i.e. "ts.type.XYZ")
+  "missing XYZ error" will be raised without getting the real error.
+* provide method for non-CObjs to cast itself to a corresponding CObj.
   I.e. ts.task_xyz could be passed directly then (instead of ts.task_xyz.handle)
 * implicit cast buf() objects to pointers/array of type void/uint8_t
 * add support for further operations to CObj/CInt (i.e. mul / div on int)
