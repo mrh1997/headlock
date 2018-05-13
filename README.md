@@ -53,26 +53,27 @@ struct ops_t
     int a, b;
 } ;
 
-#define C_MACRO   1
+#define MACRO_2   (MACRO_1 + 1)
 
 int func(struct ops_t * p)
 {
-    return underlying_func(p->a + p->b + PY_MACRO);
+    return underlying_func(p->a + p->b + MACRO_1);
 }
 ```
 
 You can access it from python through *headlock* like:
 
 ```python
-from headlock.testsetup import TestSetup
+from headlock.testsetup import TestSetup, CModule
 
-class TSSample(TestSetup.c_mixin('dummy.c', PY_MACRO=300)):
+@CModule('dummy.c', MACRO_1=1)
+class TSSample(TestSetup):
     def underlying_func_mock(self, param):
         return param.val + 4000
 
 with TSSample() as ts:
-    ops = ts.struct.ops_t(a=ts.C_MACRO, b=20)
-    assert ts.func(ops.ptr).val == 4321
+    ops = ts.struct.ops_t(a=ts.MACRO_2, b=20)
+    assert ts.func(ops.ptr).val == 4021
 ```
 
 This demonstrates how:
@@ -108,7 +109,6 @@ The current limitations are
    ```i686-*-*-dwarf-rt_v5-*```)
  - Requires LLVM. Has to be installed to
    ```C:\Program Files (x86)\LLVM```.
- - Requires CMake for creating the Makefiles. Has to be on ```PATH```.
  - Does not support specifying packing of structures in C sources
    (```#pragma pack```). As workaround it is possible to specify
    packing on a per-C-file basis in the TestSetup.
