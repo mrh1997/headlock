@@ -587,6 +587,14 @@ class TestCParser:
             assert 'func' not in parser.funcs
             assert h_fname not in parser.source_files
 
+    def test_read_onPredefinedMacroDict_doesNotModifyPredefinedMacroDict(self, tmpdir):
+        c_file = tmpdir.join('predef_macro.c')
+        c_file.write_binary(b'#define B')
+        predef_macros = dict(A=1)
+        parser = CParser(predef_macros)
+        parser.read(str(c_file))
+        assert predef_macros == dict(A=1)
+
     def test_read_onAdditionalDefines_passesDefinesToParser(self):
         parser = self.parse('int PRE_DEF_MACRO;', PRE_DEF_MACRO='var')
         assert list(parser.vars) == ['var']

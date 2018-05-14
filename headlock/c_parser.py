@@ -162,14 +162,14 @@ class CParser:
     CDECL_ATTR_TEXT = 'converted-cdecl'
     DEFAULT_PACKING = None
 
-    def __init__(self, predefined_macros=None, include_dirs=None,
+    def __init__(self, predef_macros=None, include_dirs=None,
                  sys_include_dirs=None):
         super().__init__()
         self.include_dirs = include_dirs or []
         self.sys_include_dirs = sys_include_dirs or []
-        self.predefined_macros = predefined_macros or {}
+        self.predef_macros = predef_macros.copy() if predef_macros else {}
         annotate = '__attribute__((annotate("{}")))'.format
-        self.predefined_macros.update(
+        self.predef_macros.update(
             __cdecl=annotate(self.CDECL_ATTR_TEXT),
             __forceinline=annotate(self.INLINE_ATTR_TEXT),
             __inline=annotate(self.INLINE_ATTR_TEXT),
@@ -177,7 +177,7 @@ class CParser:
             inline=annotate(self.INLINE_ATTR_TEXT))
         self.macro_locs = {}
         self.macros = {nm: MacroDef.create_from_srccode(f'{nm} {content or ""}')
-                       for nm, content in self.predefined_macros.items()}
+                       for nm, content in self.predef_macros.items()}
         self.typedefs = {n: t for n, t in BuildInDefs.__dict__.items()
                          if isinstance(t, CObjType)}
         self.structs = {}
@@ -328,7 +328,7 @@ class CParser:
                 yield '-isystem'
                 yield sys_inc_dir
         try:
-            predefs = self.predefined_macros.items()
+            predefs = self.predef_macros.items()
             tu = TranslationUnit.from_source(
                 file_name,
                 unsaved_files=[(nm, c.decode('ascii'))
