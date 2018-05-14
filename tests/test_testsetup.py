@@ -115,7 +115,7 @@ class TestCModule:
                == Path(__file__).parent / 'c_files' / 'empty.c'
 
 
-def link_to_c_str(src, filename, **macros):
+def cmod_from_ccode(src, filename, **macros):
     sourcefile = Path(__file__).parent / 'c_files' / filename
     sourcefile.write_bytes(src)
     return CModule(sourcefile, **macros)
@@ -124,7 +124,7 @@ def link_to_c_str(src, filename, **macros):
 class TestTestSetup(object):
 
     def cls_from_c_str(self, src, filename, **macros):
-        @link_to_c_str(src, filename, **macros)
+        @cmod_from_ccode(src, filename, **macros)
         class TSDummy(TestSetup): pass
         return TSDummy
 
@@ -222,15 +222,15 @@ class TestTestSetup(object):
         assert TSDummy1.get_build_dir() != TSDummy2.get_build_dir()
 
     def test_getTsName_returnFirstCFileNamePlusClassName(self):
-        @link_to_c_str(b'', 'hdr.h')
-        @link_to_c_str(b'', 'src1.c')
-        @link_to_c_str(b'', 'src2.c')
+        @cmod_from_ccode(b'', 'hdr.h')
+        @cmod_from_ccode(b'', 'src1.c')
+        @cmod_from_ccode(b'', 'src2.c')
         class TSClassName(TestSetup): pass
         assert TSClassName.get_ts_name() == 'src2_TSClassName'
 
     def test_getTsName_onOnlyHeader_returnsHFileNamePlusClassName(self):
-        @link_to_c_str(b'', 'hdr1.h')
-        @link_to_c_str(b'', 'hdr2.h')
+        @cmod_from_ccode(b'', 'hdr1.h')
+        @cmod_from_ccode(b'', 'hdr2.h')
         class TSClassName(TestSetup): pass
         assert TSClassName.get_ts_name() == 'hdr2_TSClassName'
 
@@ -335,7 +335,7 @@ class TestTestSetup(object):
             assert ts.var.val == 11
 
     def test_mockFuncWrapper_ok(self):
-        @link_to_c_str(b'int func(int * a, int * b);', 'mocked_func.c')
+        @cmod_from_ccode(b'int func(int * a, int * b);', 'mocked_func.c')
         class TSMock(TestSetup):
             func_mock = Mock(return_value=33)
         with TSMock() as ts:
@@ -343,7 +343,7 @@ class TestTestSetup(object):
             TSMock.func_mock.assert_called_with(ts.int.ptr(11), ts.int.ptr(22))
 
     def test_mockFuncWrapper_onNotExistingMockFunc_forwardsToMockFallbackFunc(self):
-        @link_to_c_str(b'int func(int * a, int * b);',
+        @cmod_from_ccode(b'int func(int * a, int * b);',
                        'mocked_func_fallback.c')
         class TSMock(TestSetup):
             mock_fallback = Mock(return_value=33)
@@ -353,7 +353,7 @@ class TestTestSetup(object):
                                                     ts.int.ptr(22))
 
     def test_mockFuncWrapper_createsCWrapperCode(self):
-        @link_to_c_str(b'int mocked_func(int p);'
+        @cmod_from_ccode(b'int mocked_func(int p);'
                        b'int func(int p) { '
                        b'   return mocked_func(p); }',
                        'mocked_func_cwrapper.c')
@@ -414,6 +414,27 @@ class TestTestSetup(object):
         TSMock = self.cls_from_c_str(b'enum enum_t { a };', 'enum.c')
         with TSMock() as ts:
             assert issubclass(ts.enum.enum_t, CEnum)
+
+    def test_onTestSetupComposedOfDifferentCModules_parseAndCompileCModulesIndependently(self):
+        @cmod_from_ccode(b'#if defined(B)\n'
+                         b'#error B not allowed\n'
+                         b'#endif\n'
+                         b'int a = A;'
+                         b'extern int b;',
+                         'diff_params_mod_a.c',
+                         A=1)
+        @cmod_from_ccode(b'#if defined(A)\n'
+                         b'#error A not allowed\n'
+                         b'#endif\n'
+                         b'extern int a;'
+                         b'int b = B;',
+                         'diff_params_mod_b.c',
+                         B=2)
+        class TSDummy(TestSetup):
+            DELAYED_PARSEERROR_REPORTING = False
+        with TSDummy() as ts:
+            assert ts.a.val == 1
+            assert ts.b.val == 2
 
     @pytest.mark.skip
     def test_onCompilationError_raisesBuildError(self):

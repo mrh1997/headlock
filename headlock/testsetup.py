@@ -165,12 +165,12 @@ class TestSetup(BuildInDefs):
         else:
             # this is a dynamicially generated class
             # => require separate directory for every generated variant
-            abs_src_files, abs_incl_dirs, predef_macros = \
-                cls.__merge_compile_params()
             hash = hashlib.md5()
-            hash.update(repr(sorted(abs_src_files)).encode('utf8'))
-            hash.update(repr(sorted(abs_incl_dirs)).encode('utf8'))
-            hash.update(repr(sorted(predef_macros.items())).encode('utf8'))
+            for cmod in cls.__get_c_modules__():
+                hash.update(bytes(cmod.abs_src_filename))
+                hash.update(repr(sorted(cmod.abs_incl_dirs)).encode('utf8'))
+                hash.update(repr(sorted(cmod.predef_macros.items()))
+                            .encode('utf8'))
             return static_dir + '_' + hash.hexdigest()
 
     @classmethod
@@ -192,50 +192,35 @@ class TestSetup(BuildInDefs):
         return os.path.join(cls.get_build_dir(), 'Makefile')
 
     @classmethod
-    def __merge_compile_params(cls):
-        def extend(base_list, new_entries):
-            for entry in new_entries:
-                if entry not in base_list:
-                    base_list.append(entry)
-        abs_incl_dirs = []
-        predef_macros = {}
-        abs_src_files = []
-        for mod in cls.__get_c_modules__():
-            extend(abs_incl_dirs, mod.abs_incl_dirs)
-            predef_macros.update(mod.predef_macros)
-            abs_src_files.append(mod.abs_src_filename)
-        return abs_src_files, abs_incl_dirs, predef_macros
-
-    @classmethod
     def __parse__(cls):
-        abs_src_files, abs_incl_dirs, predef_macros = \
-            cls.__merge_compile_params()
         sys_incl_dirs = [get_mingw_dir() / 'i686-w64-mingw32/include']
-        parser = cls.__parser_factory__(
-            predef_macros,
-            map(str, abs_incl_dirs),
-            map(str, sys_incl_dirs))
-        for abs_src_file in abs_src_files:
-            parser.read(str(abs_src_file),
-                              patches=cls._get_patches(sys_incl_dirs))
-
-        cls.__globals = parser.funcs.copy()
-        cls.__globals.update(parser.vars)
-        cls.__mocks = set(cls.__globals) - parser.implementations
-
-        for name, typedef in parser.typedefs.items():
-            setattr(cls, name, typedef)
-
+        cls.__globals = {}
+        impls = set()
         cls.struct = CustomTypeContainer()
         cls.enum = CustomTypeContainer()
-        for name, typedef in parser.structs.items():
-            if issubclass(typedef, CStruct):
-                setattr(cls.struct, name, typedef)
-            elif issubclass(typedef, CEnum):
-                setattr(cls.enum, name, typedef)
+        for cmod in cls.__get_c_modules__():
+            parser = cls.__parser_factory__(
+                cmod.predef_macros,
+                map(str, cmod.abs_incl_dirs),
+                map(str, sys_incl_dirs))
+            parser.read(str(cmod.abs_src_filename),
+                        patches=cls._get_patches(sys_incl_dirs))
 
-        for name, macro_def in parser.macros.items():
-            setattr(cls, name, macro_def)
+            cls.__globals.update(parser.funcs)
+            cls.__globals.update(parser.vars)
+            impls |= parser.implementations
+
+            for name, typedef in parser.structs.items():
+                if issubclass(typedef, CStruct):
+                    setattr(cls.struct, name, typedef)
+                elif issubclass(typedef, CEnum):
+                    setattr(cls.enum, name, typedef)
+            for name, typedef in parser.typedefs.items():
+                setattr(cls, name, typedef)
+            for name, macro_def in parser.macros.items():
+                setattr(cls, name, macro_def)
+
+        cls.__mocks = set(cls.__globals) - impls
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -337,19 +322,20 @@ class TestSetup(BuildInDefs):
                     raise BuildError(completed_proc.stderr, type(self))
 
         def build_dll():
-            abs_src_files, abs_incl_dirs, predef_macros = \
-                self.__merge_compile_params()
-            abs_src_files.append(Path(self.get_mock_proxy_path()))
+            cmods = list(self.__get_c_modules__())
+            cmods.append(CModCompileParams(
+                'mocks', Path(self.get_mock_proxy_path()), [], {}))
             build_dir = Path(self.get_build_dir())
-            for abs_src_file in abs_src_files:
-                run_gcc(['-c', str(abs_src_file)]
-                        + ['-o', str(build_dir / (abs_src_file.stem + '.o'))]
+            for cmod in cmods:
+                run_gcc(['-c', str(cmod.abs_src_filename)]
+                        + ['-o', str(build_dir
+                                     / (cmod.abs_src_filename.stem + '.o'))]
                         + ['-I' + str(incl_dir)
-                           for incl_dir in abs_incl_dirs]
+                           for incl_dir in cmod.abs_incl_dirs]
                         + [f'-D{name}={val or ""}'
-                           for name, val in predef_macros.items()])
-            run_gcc([str(build_dir / (abs_src_file.stem + '.o'))
-                     for abs_src_file in abs_src_files]
+                           for name, val in cmod.predef_macros.items()])
+            run_gcc([str(build_dir / (cmod.abs_src_filename.stem + '.o'))
+                     for cmod in cmods]
                     + ['-shared', '-o', str(build_dir / 'cmodule.dll')])
 
         if not DISABLE_AUTOBUILD:
