@@ -163,7 +163,7 @@ class CParser:
     DEFAULT_PACKING = None
 
     def __init__(self, predef_macros=None, include_dirs=None,
-                 sys_include_dirs=None):
+                 sys_include_dirs=None, target_compiler=None):
         super().__init__()
         self.include_dirs = include_dirs or []
         self.sys_include_dirs = sys_include_dirs or []
@@ -185,6 +185,7 @@ class CParser:
         self.funcs = {}
         self.implementations = set()
         self.source_files = set()
+        self.target_compiler = target_compiler
 
     def convert_struct_from_cursor(self, struct_crs):
         try:
@@ -335,7 +336,9 @@ class CParser:
                                for nm, c in patches.items()],
                 args=[f'-I{inc_dir}' for inc_dir in self.include_dirs]
                      + [f'-D{mname}={mval or ""}' for mname, mval in predefs]
-                     + list(sys_inc_dir_args(self.sys_include_dirs)),
+                     + list(sys_inc_dir_args(self.sys_include_dirs))
+                     + ([] if not self.target_compiler
+                        else [f'--target={self.target_compiler}']),
                 options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
         except TranslationUnitLoadError as e:
             raise FileNotFoundError(

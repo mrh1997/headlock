@@ -21,7 +21,6 @@ DEFAULT_MINGW64_DIR = r'C:\Program Files (x86)\mingw-w64'
 
 BUILD_CACHE = set()
 DISABLE_AUTOBUILD = False
-ATTR_MACRO_DEF = re.compile(rb'^\s*\#\s*define\s+__attribute__', re.MULTILINE)
 
 
 class BuildError(Exception):
@@ -202,9 +201,9 @@ class TestSetup(BuildInDefs):
             parser = cls.__parser_factory__(
                 cmod.predef_macros,
                 map(str, cmod.abs_incl_dirs),
-                map(str, sys_incl_dirs))
-            parser.read(str(cmod.abs_src_filename),
-                        patches=cls._get_patches(sys_incl_dirs))
+                map(str, sys_incl_dirs),
+                target_compiler='i386-pc-mingw32')
+            parser.read(str(cmod.abs_src_filename))
 
             cls.__globals.update(parser.funcs)
             cls.__globals.update(parser.vars)
@@ -251,17 +250,6 @@ class TestSetup(BuildInDefs):
             self.__build__()
             BUILD_CACHE.add(type(self))
         self.__load__()
-
-    @classmethod
-    def _get_patches(cls, sys_incl_dirs):
-        # fix _mingw.h (it contains "#define __attribute__()  /* nothing */
-        # which makes __attribute__((annotate("..."))) not work any more)
-        mingw_h_paths = (d / '_mingw.h' for d in sys_incl_dirs)
-        [mingw_h_path] = filter(Path.exists, mingw_h_paths)
-        patches = {str(mingw_h_path):
-                   ATTR_MACRO_DEF.sub(rb'#define __attribute__REDIRECTED__',
-                                      mingw_h_path.read_bytes())}
-        return patches
 
     @classmethod
     def __logger__(cls):

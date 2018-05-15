@@ -1161,3 +1161,7 @@ class BuildInDefs:
     def malloc(self, init, *args):
         mem = ct.create_string_buffer(bytes(init), *args)
         return self.void.ptr(ct.pointer(mem), _depends_on_=mem)
+
+
+# add names with '__' in front manually...
+setattr(BuildInDefs, '__builtin_va_list', BuildInDefs.void.ptr)

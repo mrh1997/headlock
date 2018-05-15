@@ -473,3 +473,10 @@ class TestTestSetup(object):
             ts.register_unload_event(on_unload, 3)
             calls = []
         assert calls == [3, 2, 1]
+
+    def test_attributeAnnotationSupport_onStdIntIncluded_ok(self):
+        TSDummy = self.cls_from_c_str(b'#include <stdint.h>\n'
+                                      b'int __cdecl cdecl_func(void);',
+                                      'attr_annotation_support.c')
+        with TSDummy() as ts:
+            assert 'cdecl' in ts.cdecl_func.c_attributes

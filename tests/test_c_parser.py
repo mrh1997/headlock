@@ -513,8 +513,8 @@ class TestCParser:
 
     @classmethod
     def parse(cls, content, patches=None, sys_include_dirs=None,
-              **predef_macros):
-        parser = CParser(predef_macros, sys_include_dirs)
+              target_compiler=None, **predef_macros):
+        parser = CParser(predef_macros, sys_include_dirs, [], target_compiler)
         fileobj = NamedTemporaryFile(suffix='.c', delete=False, mode='w+t')
         try:
             fileobj.write(content)
@@ -648,3 +648,11 @@ class TestCParser:
         with pytest.raises(ParseError) as exc:
             self.parse('u a;' * 1000)
         assert 10 < len(exc.value.errors) < 100
+
+    @pytest.mark.parametrize(('target', 'check_macro'), [
+        ('i386-pc-mingw32', '__GNUC__'), ('i686-pc-windows-msvc', '_MSC_VER')])
+    def test_read_supportsDifferentCompilerTargets_ok(self, target, check_macro):
+        self.parse('#if !defined('+check_macro+')\n'
+                   '#error missing '+check_macro+'\n'
+                   '#endif',
+                   target_compiler=target)
