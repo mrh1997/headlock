@@ -7,7 +7,8 @@ from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
 from .c_data_model import BuildInDefs, CObjType, CFunc, CStruct, CEnum
 
 
-Config.set_library_path(r'C:\Program Files (x86)\LLVM\bin')
+Config.set_library_path(os.environ.get('LLVM_DIR', r'C:\Program Files (x86)\LLVM\bin'))
+Config.set_required_version(7, 0, 0)
 
 
 class ParseError(Exception):
@@ -329,6 +330,10 @@ class CParser:
             for sys_inc_dir in sys_include_dirs:
                 yield '-isystem'
                 yield os.fspath(sys_inc_dir)
+        try:
+            _ = Config.lib
+        except Exception as exc:
+            raise ParseError('Failed to load libclang: ' + str(exc))
         try:
             predefs = self.predef_macros.items()
             tu = TranslationUnit.from_source(

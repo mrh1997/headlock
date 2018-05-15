@@ -64,6 +64,7 @@ call is efficient.
 
 from ctypes import *
 import collections
+import re
 
 from . import enumerations
 
@@ -3267,6 +3268,10 @@ functionList = [
    [c_void_p],
    c_int),
 
+  ("clang_getClangVersion",
+   [],
+   _CXString),
+
   ("clang_getCString",
    [_CXString],
    c_char_p),
@@ -3787,6 +3792,8 @@ class Config:
     library_file = None
     compatibility_check = True
     loaded = False
+    required_version = None
+    _lib = None
 
     @staticmethod
     def set_library_path(path):
@@ -3830,12 +3837,32 @@ class Config:
 
         Config.compatibility_check = check_status
 
-    @CachedProperty
+    @staticmethod
+    def set_required_version(major, minor, build):
+        """ ensures that the linked version of libclang matches
+        """
+        Config.required_version = (major, minor, build)
+        if Config.loaded:
+            Config.check_version(Config.lib)
+
+    def check_version(self):
+        if self.required_version:
+            version_str = self.lib.clang_getClangVersion().spelling
+            version_mo = re.search(r'(\d+)\.(\d+)\.(\d+)', version_str)
+            actual_version = tuple(map(int, map(version_mo.group, range(1, 4))))
+            if actual_version < self.required_version:
+                raise ValueError('Required LLVM Version >= {0[0]}.{0[1]}.{0[2]}'
+                                 ', but detected version {1[0]}.{1[1]}.{1[2]}!'
+                                 .format(self.required_version, actual_version))
+
+    @property
     def lib(self):
-        lib = self.get_cindex_library()
-        register_functions(lib, not Config.compatibility_check)
-        Config.loaded = True
-        return lib
+        if self._lib is None:
+            self._lib = self.get_cindex_library()
+            register_functions(self._lib, not Config.compatibility_check)
+            Config.loaded = True
+            self.check_version()
+        return self._lib
 
     def get_filename(self):
         if Config.library_file:

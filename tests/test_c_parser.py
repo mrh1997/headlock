@@ -316,6 +316,12 @@ class TestCParser:
     def test_convertTypeFromCursor_onArrayType_ok(self):
         self.assert_parses_as_type('int x[10]', bd.int.array(10))
 
+    def test_convertTypeFromCursor_onArrayOfUnknownSize_ok(self):
+        self.assert_parses_as_type('int x[]', bd.int.array(0))
+
+    def test_convertTypeFromCursor_onPointerToArrayOfUnknownSize_ok(self):
+        self.assert_parses_as_type('int (* x)[]', bd.int.array(0).ptr)
+
     def test_convertTypeFromCursor_onSimpleFuncPtr_ok(self):
         self.assert_parses_as_type('void (*x)()', CFunc.typedef().ptr)
 
