@@ -41,7 +41,7 @@ class TestCModuleDecoratorBase:
 
     class TSDummy:
         @classmethod
-        def _init_subclass_impl_(cls): pass
+        def __extend_by_cmodule__(cls, cmod): pass
         @classmethod
         def __get_c_modules__(cls): return iter([])
 
@@ -55,11 +55,11 @@ class TestCModuleDecoratorBase:
         assert TSDecorated.__qualname__ == 'TestCModuleDecoratorBase.TSDummy'
         assert TSDecorated.__module__ == self.TSDummy.__module__
 
-    @patch.object(CModuleDecoratorBase, 'iter_compile_params',
-                  side_effect=[[111], [222, 333]])
-    def test_call_onMultipleDecorations_makeGetCModuleReturnMultipleCModCompileParams(self, iter_comp_param):
+    def test_call_onMultipleDecorations_makeGetCModuleReturnMultipleCModCompileParams(self):
         deco1 = CModuleDecoratorBase()
+        deco1.iter_compile_params = Mock(return_value=[111])
         deco2 = CModuleDecoratorBase()
+        deco2.iter_compile_params = Mock(return_value=[222, 333])
         TSDecorated = deco1(deco2(self.TSDummy))
         assert set(TSDecorated.__get_c_modules__()) == {111, 222, 333}
 
@@ -131,7 +131,7 @@ class TestTestSetup(object):
     @CModule('c_files/empty.c')
     class TSEmpty(TestSetup):
         @classmethod
-        def _init_subclass_impl_(cls):
+        def __extend_by_cmodule__(cls, cmod):
             """
             This is a dummy, that requires no compiling.
             By avoiding compiling any bugs in build step will not result in
@@ -480,3 +480,43 @@ class TestTestSetup(object):
                                       'attr_annotation_support.c')
         with TSDummy() as ts:
             assert 'cdecl' in ts.cdecl_func.c_attributes
+
+    def test_subclassing_addsAttributesToDerivedClassButDoesNotModifyParentClass(self):
+        TSDummy = self.cls_from_c_str(b'int func(void);\n'
+                                      b'int var;\n'
+                                      b'struct strct {};\n'
+                                      b'typedef int typedf;',
+                                      'parentcls.c')
+        cmod2 = cmod_from_ccode(b'int func2(void);\n'
+                                b'int var2;\n'
+                                b'struct strct2 {};\n'
+                                b'typedef int typedf2;',
+                                'derivedcls.c')
+        TSDummy2 = cmod2(TSDummy)
+        with TSDummy() as ts:
+            assert all(hasattr(ts, attr) for attr in ('func', 'var', 'typedf'))
+            assert not any(hasattr(ts, attr)
+                           for attr in ('func2', 'var2', 'typedf2'))
+            assert hasattr(ts.struct, 'strct')
+            assert not hasattr(ts.struct, 'strct2')
+        with TSDummy2() as ts:
+            assert all(hasattr(ts, attr)
+                       for attr in ('func', 'var', 'typedf',
+                                    'func2', 'var2', 'typedf2'))
+            assert hasattr(ts.struct, 'strct')
+            assert hasattr(ts.struct, 'strct2')
+
+    def test_subclassing_onChildClsImplementsMockedMethodFromParentCls_ok(self):
+        TSDummy = self.cls_from_c_str(b'int impl_by_subclass_func(void);\n'
+                                      b'int not_impl_func(void);',
+                                      'mocked_parentcls.c')
+        cmod2 = cmod_from_ccode(b'int impl_by_subclass_func(void) { return 2; }',
+                                'impl_derivedcls.c')
+        TSDummy2 = cmod2(TSDummy)
+        with TSDummy() as ts:
+            with pytest.raises(MethodNotMockedError):
+                ts.impl_by_subclass_func()
+        with TSDummy2() as ts:
+            assert ts.impl_by_subclass_func() == 2
+            with pytest.raises(MethodNotMockedError):
+                ts.not_impl_func()

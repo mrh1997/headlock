@@ -1,14 +1,13 @@
 import ctypes as ct
 import os
 import os.path
-import secrets
-import re
 import subprocess
 import sys
 import weakref
 import abc
 import hashlib
 from collections import namedtuple
+import copy
 
 from pathlib import Path
 
@@ -77,20 +76,19 @@ class CModuleDecoratorBase:
 
     def __call__(self, parent_cls):
         class SubCls(parent_cls):
-            _block_init_subclass = True
             @classmethod
             def __get_c_modules__(cls):
                 yield from super(SubCls, cls).__get_c_modules__()
                 yield from self.iter_compile_params(cls)
-        del SubCls._block_init_subclass
         SubCls.__name__ = parent_cls.__name__
         SubCls.__qualname__ = parent_cls.__qualname__
         SubCls.__module__ = parent_cls.__module__
-        SubCls._init_subclass_impl_()
+        for cmod in self.iter_compile_params(SubCls):
+            SubCls.__extend_by_cmodule__(cmod)
         return SubCls
 
     @abc.abstractmethod
-    def iter_compile_params(self, cls): ...
+    def iter_compile_params(self, cls): return iter([])
 
 
 class CModule(CModuleDecoratorBase):
@@ -126,6 +124,9 @@ class CModule(CModuleDecoratorBase):
 
 class TestSetup(BuildInDefs):
 
+    struct = CustomTypeContainer()
+    enum = CustomTypeContainer()
+
     _BUILD_DIR_ = '.headlock'
     DELAYED_PARSEERROR_REPORTING = True
 
@@ -135,6 +136,8 @@ class TestSetup(BuildInDefs):
 
     __globals = {}
     __mocks = set()
+
+    _delayed_exc = None
 
     ### provide structs with packing 1
 
@@ -191,53 +194,39 @@ class TestSetup(BuildInDefs):
         return os.path.join(cls.get_build_dir(), 'Makefile')
 
     @classmethod
-    def __parse__(cls):
-        sys_incl_dirs = [get_mingw_dir() / 'i686-w64-mingw32/include']
-        cls.__globals = {}
-        impls = set()
-        cls.struct = CustomTypeContainer()
-        cls.enum = CustomTypeContainer()
-        for cmod in cls.__get_c_modules__():
-            parser = cls.__parser_factory__(
-                cmod.predef_macros,
-                map(str, cmod.abs_incl_dirs),
-                map(str, sys_incl_dirs),
-                target_compiler='i386-pc-mingw32')
-            parser.read(str(cmod.abs_src_filename))
-
-            cls.__globals.update(parser.funcs)
-            cls.__globals.update(parser.vars)
-            impls |= parser.implementations
-
-            for name, typedef in parser.structs.items():
-                if issubclass(typedef, CStruct):
-                    setattr(cls.struct, name, typedef)
-                elif issubclass(typedef, CEnum):
-                    setattr(cls.enum, name, typedef)
-            for name, typedef in parser.typedefs.items():
-                setattr(cls, name, typedef)
-            for name, macro_def in parser.macros.items():
-                setattr(cls, name, macro_def)
-
-        cls.__mocks = set(cls.__globals) - impls
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        if not hasattr(cls, '_block_init_subclass'):
-            cls._init_subclass_impl_()
-
-    @classmethod
-    def _init_subclass_impl_(cls):
-        cls._delayed_exc = None
-
+    def __extend_by_cmodule__(cls, cmod):
+        parser = cls.__parser_factory__(
+            cmod.predef_macros,
+            list(map(str, cmod.abs_incl_dirs)),
+            [str(get_mingw_dir() / 'i686-w64-mingw32/include')],
+            target_compiler='i386-pc-mingw32')
         try:
-            cls.__parse__()
+            parser.read(str(cmod.abs_src_filename))
         except ParseError as exc:
             exc = CompileError(exc.errors, cls)
             if cls.DELAYED_PARSEERROR_REPORTING:
                 cls._delayed_exc = exc
             else:
                 raise exc
+        else:
+            cls.__globals = super(cls, cls).__globals.copy()
+            cls.__globals.update(parser.funcs)
+            cls.__globals.update(parser.vars)
+
+            cls.struct = copy.copy(super(cls, cls).struct)
+            cls.enum = copy.copy(super(cls, cls).enum)
+            for name, typedef in parser.structs.items():
+                if issubclass(typedef, CStruct):
+                    setattr(cls.struct, name, typedef)
+                elif issubclass(typedef, CEnum):
+                    setattr(cls.enum, name, typedef)
+
+            for name, typedef in parser.typedefs.items():
+                setattr(cls, name, typedef)
+            for name, macro_def in parser.macros.items():
+                setattr(cls, name, macro_def)
+
+            cls.__mocks = set(cls.__globals) - parser.implementations
 
     def __init__(self):
         super(TestSetup, self).__init__()
