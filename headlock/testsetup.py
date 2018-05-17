@@ -63,8 +63,8 @@ def get_mingw_dir():
     return envs[-1]
 
 
-CModCompileParams = namedtuple(
-    'CModCompileParams',
+TransUnit = namedtuple(
+    'TransUnit',
     'subsys_name abs_src_filename abs_incl_dirs predef_macros')
 
 
@@ -76,19 +76,16 @@ class CModuleDecoratorBase:
 
     def __call__(self, parent_cls):
         class SubCls(parent_cls):
-            @classmethod
-            def __get_c_modules__(cls):
-                yield from super(SubCls, cls).__get_c_modules__()
-                yield from self.iter_compile_params(cls)
+            pass
         SubCls.__name__ = parent_cls.__name__
         SubCls.__qualname__ = parent_cls.__qualname__
         SubCls.__module__ = parent_cls.__module__
-        for cmod in self.iter_compile_params(SubCls):
-            SubCls.__extend_by_cmodule__(cmod)
+        for transunit in self.iter_transunits(SubCls):
+            SubCls.__extend_by_transunit__(transunit)
         return SubCls
 
     @abc.abstractmethod
-    def iter_compile_params(self, cls): return iter([])
+    def iter_transunits(self, cls): return iter([])
 
 
 class CModule(CModuleDecoratorBase):
@@ -108,14 +105,14 @@ class CModule(CModuleDecoratorBase):
         rev_qualname = '.'.join(reversed(cls.__qualname__.split('.')))
         return f'{self.src_filenames[0].stem}.{rev_qualname}.{cls.__module__}'
 
-    def iter_compile_params(self, cls):
+    def iter_transunits(self, cls):
         incl_dirs = self.get_incl_dirs()
         for src_filename in self.src_filenames:
-            yield CModCompileParams(self.get_fqn(cls),
-                                    self.resolve_path(src_filename, cls),
-                                    [self.resolve_path(incl_dir, cls)
-                                     for incl_dir in incl_dirs],
-                                    self.predef_macros)
+            yield TransUnit(self.get_fqn(cls),
+                            self.resolve_path(src_filename, cls),
+                            [self.resolve_path(incl_dir, cls)
+                             for incl_dir in incl_dirs],
+                            self.predef_macros)
 
     def resolve_path(self, filename, cls):
         mod = sys.modules[cls.__module__]
@@ -139,11 +136,9 @@ class TestSetup(BuildInDefs):
 
     _delayed_exc = None
 
-    ### provide structs with packing 1
+    __transunits__ = ()
 
-    @classmethod
-    def __get_c_modules__(cls):
-        return []
+    ### provide structs with packing 1
 
     @classmethod
     def get_ts_abspath(cls):
@@ -168,16 +163,16 @@ class TestSetup(BuildInDefs):
             # this is a dynamicially generated class
             # => require separate directory for every generated variant
             hash = hashlib.md5()
-            for cmod in cls.__get_c_modules__():
-                hash.update(bytes(cmod.abs_src_filename))
-                hash.update(repr(sorted(cmod.abs_incl_dirs)).encode('utf8'))
-                hash.update(repr(sorted(cmod.predef_macros.items()))
+            for tu in cls.__transunits__:
+                hash.update(bytes(tu.abs_src_filename))
+                hash.update(repr(sorted(tu.abs_incl_dirs)).encode('utf8'))
+                hash.update(repr(sorted(tu.predef_macros.items()))
                             .encode('utf8'))
             return static_dir + '_' + hash.hexdigest()
 
     @classmethod
     def get_ts_name(cls):
-        mods = list(cls.__get_c_modules__())
+        mods = list(reversed(cls.__transunits__))
         if len(mods) == 0:
             return cls.__name__
         else:
@@ -194,14 +189,14 @@ class TestSetup(BuildInDefs):
         return os.path.join(cls.get_build_dir(), 'Makefile')
 
     @classmethod
-    def __extend_by_cmodule__(cls, cmod):
+    def __extend_by_transunit__(cls, transunit):
         parser = cls.__parser_factory__(
-            cmod.predef_macros,
-            list(map(str, cmod.abs_incl_dirs)),
+            transunit.predef_macros,
+            list(map(str, transunit.abs_incl_dirs)),
             [str(get_mingw_dir() / 'i686-w64-mingw32/include')],
             target_compiler='i386-pc-mingw32')
         try:
-            parser.read(str(cmod.abs_src_filename))
+            parser.read(str(transunit.abs_src_filename))
         except ParseError as exc:
             exc = CompileError(exc.errors, cls)
             if cls.DELAYED_PARSEERROR_REPORTING:
@@ -227,6 +222,7 @@ class TestSetup(BuildInDefs):
                 setattr(cls, name, macro_def)
 
             cls.__mocks = set(cls.__globals) - parser.implementations
+        cls.__transunits__ = cls.__transunits__ + (transunit,)
 
     def __init__(self):
         super(TestSetup, self).__init__()
@@ -299,20 +295,20 @@ class TestSetup(BuildInDefs):
                     raise BuildError(completed_proc.stderr, type(self))
 
         def build_dll():
-            cmods = list(self.__get_c_modules__())
-            cmods.append(CModCompileParams(
-                'mocks', Path(self.get_mock_proxy_path()), [], {}))
+            mock_proxy_src = Path(self.get_mock_proxy_path())
+            mock_tu = TransUnit('mocks', mock_proxy_src, [], {})
+            transunits = self.__transunits__ + (mock_tu,)
             build_dir = Path(self.get_build_dir())
-            for cmod in cmods:
-                run_gcc(['-c', str(cmod.abs_src_filename)]
+            for tu in transunits:
+                run_gcc(['-c', str(tu.abs_src_filename)]
                         + ['-o', str(build_dir
-                                     / (cmod.abs_src_filename.stem + '.o'))]
+                                     / (tu.abs_src_filename.stem + '.o'))]
                         + ['-I' + str(incl_dir)
-                           for incl_dir in cmod.abs_incl_dirs]
+                           for incl_dir in tu.abs_incl_dirs]
                         + [f'-D{name}={val or ""}'
-                           for name, val in cmod.predef_macros.items()])
-            run_gcc([str(build_dir / (cmod.abs_src_filename.stem + '.o'))
-                     for cmod in cmods]
+                           for name, val in tu.predef_macros.items()])
+            run_gcc([str(build_dir / (tu.abs_src_filename.stem + '.o'))
+                     for tu in transunits]
                     + ['-shared', '-o', str(build_dir / 'cmodule.dll')])
 
         if not DISABLE_AUTOBUILD:

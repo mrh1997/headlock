@@ -1,10 +1,9 @@
 import pytest
 from headlock.testsetup import TestSetup, MethodNotMockedError, \
-    BuildError, CompileError, CModuleDecoratorBase, CModule
+    BuildError, CompileError, CModuleDecoratorBase, CModule, TransUnit
 import os
 import subprocess
-from unittest.mock import patch, Mock
-import tempfile
+from unittest.mock import patch, Mock, MagicMock, call
 from headlock.c_data_model import CStruct, CEnum, CInt
 from pathlib import Path
 
@@ -41,12 +40,9 @@ class TestCModuleDecoratorBase:
 
     class TSDummy:
         @classmethod
-        def __extend_by_cmodule__(cls, cmod): pass
-        @classmethod
-        def __get_c_modules__(cls): return iter([])
+        def __extend_by_transunit__(cls, transunit): pass
 
-    @patch.object(CModuleDecoratorBase, 'iter_compile_params')
-    def test_call_onCls_returnsDerivedClassWithSameNameAndModule(self, iter_comp_param):
+    def test_call_onCls_returnsDerivedClassWithSameNameAndModule(self):
         c_mod_decorator = CModuleDecoratorBase()
         TSDecorated = c_mod_decorator(self.TSDummy)
         assert issubclass(TSDecorated, self.TSDummy) \
@@ -55,13 +51,13 @@ class TestCModuleDecoratorBase:
         assert TSDecorated.__qualname__ == 'TestCModuleDecoratorBase.TSDummy'
         assert TSDecorated.__module__ == self.TSDummy.__module__
 
-    def test_call_onMultipleDecorations_makeGetCModuleReturnMultipleCModCompileParams(self):
-        deco1 = CModuleDecoratorBase()
-        deco1.iter_compile_params = Mock(return_value=[111])
-        deco2 = CModuleDecoratorBase()
-        deco2.iter_compile_params = Mock(return_value=[222, 333])
-        TSDecorated = deco1(deco2(self.TSDummy))
-        assert set(TSDecorated.__get_c_modules__()) == {111, 222, 333}
+    @patch.object(TSDummy, '__extend_by_transunit__')
+    def test_call_onCls_calls(self, __extend_by_transunit__):
+        deco = CModuleDecoratorBase()
+        tu1, tu2 = Mock(), Mock()
+        deco.iter_transunits = Mock(return_value=[tu1, tu2])
+        TSDecorated = deco(self.TSDummy)
+        assert __extend_by_transunit__.call_args_list == [call(tu1), call(tu2)]
 
 
 class TestCModule:
@@ -69,41 +65,41 @@ class TestCModule:
     class TSDummy: pass
 
     @patch.object(CModule, 'resolve_path', return_value=Path('/absdir'))
-    def test_iterCompileParams_resolvesSrcFilename(self, res_path):
+    def test_iterTransunits_resolvesSrcFilename(self, res_path):
         c_mod = CModule('test.c')
-        [comp_param] = c_mod.iter_compile_params(self.TSDummy)
-        assert comp_param.abs_src_filename == res_path.return_value
+        [transunit] = c_mod.iter_transunits(self.TSDummy)
+        assert transunit.abs_src_filename == res_path.return_value
         res_path.assert_called_with(Path('test.c'), self.TSDummy)
 
     @patch.object(CModule, 'resolve_path')
-    def test_iterCompileParams_setsSubsysName(self, res_path):
+    def test_iterTransunits_setsSubsysName(self, res_path):
         c_mod = CModule('test1.c', 'test2.c', 'test3.c')
-        [comp_param, *_] = c_mod.iter_compile_params(self.TSDummy)
-        assert comp_param.subsys_name \
+        [transunit, *_] = c_mod.iter_transunits(self.TSDummy)
+        assert transunit.subsys_name \
                == 'test1.TSDummy.TestCModule.test_testsetup'
 
     @patch.object(CModule, 'resolve_path', return_value=Path('/absdir'))
     @patch.object(CModule, 'get_incl_dirs',return_value=[Path('d1'),Path('d2')])
-    def test_iterCompileParams_retrievesAndResolvesIncludeDirs(self, get_incl_patch, reslv_patch):
+    def test_iterTransunits_retrievesAndResolvesIncludeDirs(self, get_incl_patch, reslv_patch):
         c_mod = CModule('test.c')
-        [comp_param] = c_mod.iter_compile_params(self.TSDummy)
-        assert comp_param.abs_incl_dirs == [reslv_patch.return_value] * 2
+        [transunit] = c_mod.iter_transunits(self.TSDummy)
+        assert transunit.abs_incl_dirs == [reslv_patch.return_value] * 2
         reslv_patch.assert_any_call(Path('d1'), self.TSDummy)
         reslv_patch.assert_any_call(Path('d2'), self.TSDummy)
 
     @patch.object(CModule, 'resolve_path')
-    def test_iterCompileParams_createsOneCompileParamPerSrcFilename(self, reslv_patch):
+    def test_iterTransunits_createsOneCompileParamPerSrcFilename(self, reslv_patch):
         c_mod = CModule('test1.c', 'test2.c')
-        assert len(list(c_mod.iter_compile_params(self.TSDummy))) == 2
+        assert len(list(c_mod.iter_transunits(self.TSDummy))) == 2
         reslv_patch.assert_any_call(Path('test1.c'), self.TSDummy)
         reslv_patch.assert_any_call(Path('test2.c'), self.TSDummy)
 
     @patch.object(CModule, 'resolve_path')
-    def test_iterCompileParams_onPredefMacros_passesMacrosToCompParams(self, reslv_patch):
+    def test_iterTransunits_onPredefMacros_passesMacrosToCompParams(self, reslv_patch):
         c_mod = CModule('test.c', MACRO1=11, MACRO2=22)
-        [comp_param] = c_mod.iter_compile_params(self.TSDummy)
+        [comp_param] = c_mod.iter_transunits(self.TSDummy)
         assert comp_param.predef_macros == {'MACRO1':11, 'MACRO2':22}
-    
+        
     def test_resolvePath_onAbsPath_returnsPathAsIs(self, tmpdir):
         c_mod = CModule()
         assert c_mod.resolve_path(Path(tmpdir), self.TSDummy) \
@@ -115,23 +111,23 @@ class TestCModule:
                == Path(__file__).parent / 'c_files' / 'empty.c'
 
 
-def cmod_from_ccode(src, filename, **macros):
-    sourcefile = Path(__file__).parent / 'c_files' / filename
-    sourcefile.write_bytes(src)
-    return CModule(sourcefile, **macros)
-
-
 class TestTestSetup(object):
 
-    def cls_from_c_str(self, src, filename, **macros):
-        @cmod_from_ccode(src, filename, **macros)
+    def extend_by_ccode(self, cls, src, filename, **macros):
+        sourcefile = (Path(__file__).parent / 'c_files' / filename).absolute()
+        sourcefile.write_bytes(src)
+        transunit = TransUnit('test_tu', sourcefile, [], macros)
+        cls.__extend_by_transunit__(transunit)
+    
+    def cls_from_ccode(self, src, filename, **macros):
         class TSDummy(TestSetup): pass
+        self.extend_by_ccode(TSDummy, src, filename, **macros)
         return TSDummy
 
     @CModule('c_files/empty.c')
     class TSEmpty(TestSetup):
         @classmethod
-        def __extend_by_cmodule__(cls, cmod):
+        def __extend_by_transunit__(cls, transunit):
             """
             This is a dummy, that requires no compiling.
             By avoiding compiling any bugs in build step will not result in
@@ -140,8 +136,27 @@ class TestTestSetup(object):
 
     @pytest.fixture
     def ts_dummy(self):
-        TSDummy = self.cls_from_c_str(b'', 'test.c')
+        TSDummy = self.cls_from_ccode(b'', 'test.c')
         return TSDummy
+
+    def test_extendByTransunit_addsModulesToGetCModules(self):
+        class TSDummy(TestSetup):
+            __parser_factory__ = MagicMock()
+        transunits = [MagicMock(), MagicMock()]
+        TSDummy.__extend_by_transunit__(transunits[0])
+        TSDummy.__extend_by_transunit__(transunits[1])
+        assert list(TSDummy.__transunits__) == list(transunits)
+
+    def test_extendByTransunit_doesNotModifyParentCls(self):
+        transunits = [MagicMock(), MagicMock()]
+        class TSParent(TestSetup):
+            __parser_factory__ = MagicMock()
+        TSParent.__extend_by_transunit__(transunits[0])
+        class TSChild(TSParent):
+            pass
+        TSChild.__extend_by_transunit__(transunits[1])
+        assert list(TSParent.__transunits__) == transunits[:1]
+        assert list(TSChild.__transunits__) == transunits[:2]
 
     @pytest.mark.skip
     def test_cMixin_onValidSource_ok(self):
@@ -188,69 +203,70 @@ class TestTestSetup(object):
             os.chdir(saved_cwd)
 
     def test_getTsAbspath_returnsAbsPathOfFile(self, from_parent_dir):
-        TSDummy = self.cls_from_c_str(b'', 'test.c')
+        TSDummy = self.cls_from_ccode(b'', 'test.c')
         assert TSDummy.get_ts_abspath() \
                == os.path.join(os.path.abspath(from_parent_dir),
                                'test_testsetup.py')
 
     def test_getSrcDir_returnsAbsDirOfFile(self, from_parent_dir):
-        TSDummy = self.cls_from_c_str(b'', 'test.c')
+        TSDummy = self.cls_from_ccode(b'', 'test.c')
         assert TSDummy.get_src_dir() == os.path.abspath(from_parent_dir)
+
+    class TSEmpty(TestSetup):
+        __transunits__ = [TransUnit('empty', Path(__file__, 'c_files/empty.c'),
+                                    [], {})]
 
     def test_getBuildDir_onStaticTSCls_returnsPathQualName(self, from_parent_dir):
         assert self.TSEmpty.get_build_dir() \
                == os.path.normpath(os.path.join(os.path.abspath(__file__), '..',
-                                                TSDummy._BUILD_DIR_,
+                                                TestSetup._BUILD_DIR_,
                                                 'TestTestSetup.TSEmpty'))
 
     def test_getBuildDir_onDynamicGeneratedTSCls_returnsPathWithQualNameAndUid(self, from_parent_dir):
-        TSDummy = self.cls_from_c_str(b'', 'test.c')
+        TSDummy = self.cls_from_ccode(b'', 'test.c')
         assert TSDummy.get_build_dir()[:-32] \
                == os.path.join(os.path.abspath(from_parent_dir),
-                               TSDummy._BUILD_DIR_,
-                               'TestTestSetup.cls_from_c_str.TSDummy_')
+                               TestSetup._BUILD_DIR_,
+                               'TestTestSetup.cls_from_ccode.TSDummy_')
         int(TSDummy.get_build_dir()[-32:], 16)   # expect hexnumber at the end
 
     def test_getBuildDir_onDynamicGeneratedTSClsWithSameParams_returnsSameDir(self, from_parent_dir):
-        TSDummy1 = self.cls_from_c_str(b'', 'test.c')
-        TSDummy2 = self.cls_from_c_str(b'', 'test.c')
+        TSDummy1 = self.cls_from_ccode(b'', 'test.c')
+        TSDummy2 = self.cls_from_ccode(b'', 'test.c')
         assert TSDummy1.get_build_dir() == TSDummy2.get_build_dir()
 
     def test_getBuildDir_onDynamicGeneratedTSClsWithDifferentParams_returnsDifferentDir(self, from_parent_dir):
-        TSDummy1 = self.cls_from_c_str(b'', 'test.c', A=1, B=222, C=3)
-        TSDummy2 = self.cls_from_c_str(b'', 'test.c', A=1, B=2, C=3)
+        TSDummy1 = self.cls_from_ccode(b'', 'test.c', A=1, B=222, C=3)
+        TSDummy2 = self.cls_from_ccode(b'', 'test.c', A=1, B=2, C=3)
         assert TSDummy1.get_build_dir() != TSDummy2.get_build_dir()
 
-    def test_getTsName_returnFirstCFileNamePlusClassName(self):
-        @cmod_from_ccode(b'', 'hdr.h')
-        @cmod_from_ccode(b'', 'src1.c')
-        @cmod_from_ccode(b'', 'src2.c')
+    def test_getTsName_returnFirstFileNamePlusClassName(self, tmpdir):
+        tmpdir.join('dir/src1.c').write_binary(b'', ensure=True)
+        tmpdir.join('dir/src2.c').write_binary(b'', ensure=True)
         class TSClassName(TestSetup): pass
+        TSClassName.__extend_by_transunit__(
+            TransUnit('', Path(tmpdir.join('dir/src1.c')), [], {}))
+        TSClassName.__extend_by_transunit__(
+            TransUnit('', Path(tmpdir.join('dir/src2.c')), [], {}))
         assert TSClassName.get_ts_name() == 'src2_TSClassName'
-
-    def test_getTsName_onOnlyHeader_returnsHFileNamePlusClassName(self):
-        @cmod_from_ccode(b'', 'hdr1.h')
-        @cmod_from_ccode(b'', 'hdr2.h')
-        class TSClassName(TestSetup): pass
-        assert TSClassName.get_ts_name() == 'hdr2_TSClassName'
 
     def test_getTsName_onNoSourceFiles_returnsClassNameOnly(self):
         class TSClassName(TestSetup): pass
         assert TSClassName.get_ts_name() == 'TSClassName'
 
     def test_macroWrapper_ok(self):
-        TS = self.cls_from_c_str(b'#define MACRONAME   123', 'macro.c')
+        TS = self.cls_from_ccode(b'#define MACRONAME   123', 'macro.c')
         assert TS.MACRONAME == 123
 
     def test_macroWrapper_onNotConvertableMacros_raisesValueError(self):
-        cls = self.cls_from_c_str(b'#define MACRONAME   (int[]) 3',
+        cls = self.cls_from_ccode(b'#define MACRONAME   (int[]) 3',
                                   'invalid_macro.c')
         ts = cls()
         with pytest.raises(ValueError):
             _ = ts.MACRONAME
 
     def test_create_onPredefinedMacro_providesMacroAsMember(self):
-        TSMock = self.cls_from_c_str(b'', 'create_predef.c',
+        TSMock = self.cls_from_ccode(b'', 'create_predef.c',
                                      A=None, B=1, C='')
         with TSMock() as ts:
             assert ts.A is None
@@ -259,7 +275,7 @@ class TestTestSetup(object):
 
     @patch('headlock.testsetup.TestSetup.__startup__')
     def test_init_providesBuildAndLoadedButNotStartedDll(self, __startup__):
-        TS = self.cls_from_c_str(b'int var;', 'init_calls_load.c')
+        TS = self.cls_from_ccode(b'int var;', 'init_calls_load.c')
         ts = TS()
         try:
             __startup__.assert_not_called()
@@ -268,7 +284,7 @@ class TestTestSetup(object):
             ts.__unload__()
 
     def test_build_onPredefinedMacros_passesMacrosToCompiler(self):
-        TSMock = self.cls_from_c_str(b'int a = A;\n'
+        TSMock = self.cls_from_ccode(b'int a = A;\n'
                                      b'int b = B 22;\n'
                                      b'#if defined(C)\n'
                                      b'int c = 33;\n'
@@ -282,7 +298,7 @@ class TestTestSetup(object):
 
     @patch('headlock.testsetup.TestSetup.__shutdown__')
     def test_unload_doesAnImplicitShutdown(self, __shutdown__):
-        TS = self.cls_from_c_str(b'int var;', 'unload_calls_shutdown.c')
+        TS = self.cls_from_ccode(b'int var;', 'unload_calls_shutdown.c')
         ts = TS()
         ts.__shutdown__.assert_not_called()
         ts.__unload__()
@@ -290,14 +306,14 @@ class TestTestSetup(object):
         assert not hasattr(ts, 'var')
 
     def test_startup_doesAnImplicitLoad(self):
-        TS = self.cls_from_c_str(b'', 'startup_calls_load.c')
+        TS = self.cls_from_ccode(b'', 'startup_calls_load.c')
         ts = TS()
         ts.__load__ = Mock()
         ts.__startup__()
         ts.__load__.assert_called_once()
 
     def test_contextmgr_onCompilableCCode_callsStartupAndShutdown(self):
-        TSMock = self.cls_from_c_str(b'', 'contextmgr.c')
+        TSMock = self.cls_from_ccode(b'', 'contextmgr.c')
         ts = TSMock()
         ts.__startup__ = Mock(side_effect=ts.__startup__)
         ts.__shutdown__ = Mock(side_effect=ts.__shutdown__)
@@ -309,62 +325,62 @@ class TestTestSetup(object):
         ts.__shutdown__.assert_called_once()
 
     def test_contextmgr_onCompilableCCode_catchesExceptions(self):
-        TSMock = self.cls_from_c_str(b'', 'contextmgr_on_exception.c')
+        TSMock = self.cls_from_ccode(b'', 'contextmgr_on_exception.c')
         with pytest.raises(ValueError):
             with TSMock() as ts:
                 raise ValueError();
 
     def test_funcWrapper_ok(self):
-        TSMock = self.cls_from_c_str(b'int func(int a, int b) { return a+b; }',
+        TSMock = self.cls_from_ccode(b'int func(int a, int b) { return a+b; }',
                                      'func.c')
         with TSMock() as ts:
             assert ts.func(11, 22) == 33
 
     def test_varWrapper_ok(self):
-        TSMock = self.cls_from_c_str(b'int var = 11;', 'var.c')
+        TSMock = self.cls_from_ccode(b'int var = 11;', 'var.c')
         with TSMock() as ts:
             assert ts.var.val == 11
             ts.var.val = 22
             assert ts.var.val == 22
 
     def test_mockVarWrapper_ok(self):
-        TSMock = self.cls_from_c_str(b'extern int var;', 'mocked_var.c')
+        TSMock = self.cls_from_ccode(b'extern int var;', 'mocked_var.c')
         with TSMock() as ts:
             assert ts.var.val == 0
             ts.var.val = 11
             assert ts.var.val == 11
 
     def test_mockFuncWrapper_ok(self):
-        @cmod_from_ccode(b'int func(int * a, int * b);', 'mocked_func.c')
         class TSMock(TestSetup):
             func_mock = Mock(return_value=33)
+        self.extend_by_ccode(TSMock, b'int func(int * a, int * b);', 'mocked.c')
         with TSMock() as ts:
             assert ts.func(11, 22) == 33
             TSMock.func_mock.assert_called_with(ts.int.ptr(11), ts.int.ptr(22))
 
     def test_mockFuncWrapper_onNotExistingMockFunc_forwardsToMockFallbackFunc(self):
-        @cmod_from_ccode(b'int func(int * a, int * b);',
-                       'mocked_func_fallback.c')
         class TSMock(TestSetup):
             mock_fallback = Mock(return_value=33)
+        self.extend_by_ccode(TSMock, b'int func(int * a, int * b);',
+                             'mocked_func_fallback.c')
         with TSMock() as ts:
             assert ts.func(11, 22) == 33
             TSMock.mock_fallback.assert_called_with('func', ts.int.ptr(11),
                                                     ts.int.ptr(22))
 
     def test_mockFuncWrapper_createsCWrapperCode(self):
-        @cmod_from_ccode(b'int mocked_func(int p);'
-                       b'int func(int p) { '
-                       b'   return mocked_func(p); }',
-                       'mocked_func_cwrapper.c')
         class TSMock(TestSetup):
             mocked_func_mock = Mock(return_value=22)
+        self.extend_by_ccode(TSMock, b'int mocked_func(int p);'
+                                     b'int func(int p) { '
+                                     b'   return mocked_func(p); }',
+                             'mocked_func_cwrapper.c')
         with TSMock() as ts:
             assert ts.func(11) == 22
             TSMock.mocked_func_mock.assert_called_once_with(11)
 
     def test_mockFuncWrapper_onUnmockedFunc_raisesMethodNotMockedError(self):
-        TSMock = self.cls_from_c_str(b'void unmocked_func();',
+        TSMock = self.cls_from_ccode(b'void unmocked_func();',
                                      'mocked_func_error.c')
         with TSMock() as ts:
             with pytest.raises(MethodNotMockedError) as excinfo:
@@ -372,17 +388,17 @@ class TestTestSetup(object):
             assert "unmocked_func" in str(excinfo.value)
 
     def test_typedefWrapper_storesTypeDefInTypedefCls(self):
-        TSMock = self.cls_from_c_str(b'typedef int td_t;', 'typedef.c')
+        TSMock = self.cls_from_ccode(b'typedef int td_t;', 'typedef.c')
         with TSMock() as ts:
             assert issubclass(ts.td_t, CInt)
 
     def test_structWrapper_storesStructDefInStructCls(self):
-        TSMock = self.cls_from_c_str(b'struct strct_t { };', 'struct.c')
+        TSMock = self.cls_from_ccode(b'struct strct_t { };', 'struct.c')
         with TSMock() as ts:
             assert issubclass(ts.struct.strct_t, CStruct)
 
     def test_structWrapper_onContainedStruct_ensuresContainedStructDeclaredFirst(self):
-        TSMock = self.cls_from_c_str(
+        TSMock = self.cls_from_ccode(
             b'struct s2_t { '
             b'     struct s1_t { int m; } s1; '
             b'     struct s3_t { int m; } s3;'
@@ -392,7 +408,7 @@ class TestTestSetup(object):
         with TSMock(): pass
 
     def test_structWrapper_onContainedStructPtr_ensuresNonPtrMembersDeclaredFirst(self):
-        TSMock = self.cls_from_c_str(
+        TSMock = self.cls_from_ccode(
             b'struct outer_t;'
             b'struct inner_t { '
             b'     struct outer_t * outer_ptr;'
@@ -405,40 +421,40 @@ class TestTestSetup(object):
         with TSMock(): pass
 
     def test_structWrapper_onAnonymousStruct_ok(self):
-        TSMock = self.cls_from_c_str(b'struct { int a; } var;',
+        TSMock = self.cls_from_ccode(b'struct { int a; } var;',
                                      'anonymous_structs.c')
         with TSMock() as ts:
             assert type(ts.var) == list(ts.struct.__dict__.values())[0]
 
     def test_enumWrapper_storesEnumDefInEnumCls(self):
-        TSMock = self.cls_from_c_str(b'enum enum_t { a };', 'enum.c')
+        TSMock = self.cls_from_ccode(b'enum enum_t { a };', 'enum.c')
         with TSMock() as ts:
             assert issubclass(ts.enum.enum_t, CEnum)
 
     def test_onTestSetupComposedOfDifferentCModules_parseAndCompileCModulesIndependently(self):
-        @cmod_from_ccode(b'#if defined(B)\n'
-                         b'#error B not allowed\n'
-                         b'#endif\n'
-                         b'int a = A;'
-                         b'extern int b;',
-                         'diff_params_mod_a.c',
-                         A=1)
-        @cmod_from_ccode(b'#if defined(A)\n'
-                         b'#error A not allowed\n'
-                         b'#endif\n'
-                         b'extern int a;'
-                         b'int b = B;',
-                         'diff_params_mod_b.c',
-                         B=2)
         class TSDummy(TestSetup):
             DELAYED_PARSEERROR_REPORTING = False
+        self.extend_by_ccode(TSDummy, b'#if defined(A)\n'
+                                      b'#error A not allowed\n'
+                                      b'#endif\n'
+                                      b'extern int a;'
+                                      b'int b = B;',
+                             'diff_params_mod_b.c',
+                             B=2)
+        self.extend_by_ccode(TSDummy, b'#if defined(B)\n'
+                                      b'#error B not allowed\n'
+                                      b'#endif\n'
+                                      b'int a = A;'
+                                      b'extern int b;',
+                             'diff_params_mod_a.c',
+                             A=1)
         with TSDummy() as ts:
             assert ts.a.val == 1
             assert ts.b.val == 2
 
     @pytest.mark.skip
     def test_onCompilationError_raisesBuildError(self):
-        TS = self.cls_from_c_str(b'void func(void) {undefined_FUNC();}',
+        TS = self.cls_from_ccode(b'void func(void) {undefined_FUNC();}',
                                  'undefined_symbol.c')
         try:
             TS()
@@ -448,7 +464,7 @@ class TestTestSetup(object):
             raise AssertionError()
 
     def test_registerUnloadEvent_onRegisteredEvent_isCalledOnUnload(self):
-        TSDummy = self.cls_from_c_str(b'', 'test1.c')
+        TSDummy = self.cls_from_ccode(b'', 'test1.c')
         with TSDummy() as ts:
             def on_unload():
                 calls.append('unloaded')
@@ -457,14 +473,14 @@ class TestTestSetup(object):
         assert calls == ['unloaded']
 
     def test_registerUnloadEvent_onParams_arePassedWhenUnloaded(self):
-        TSDummy = self.cls_from_c_str(b'', 'test2.c')
+        TSDummy = self.cls_from_ccode(b'', 'test2.c')
         with TSDummy() as ts:
             def on_unload(p1, p2):
                 assert p1 == 'PARAM1' and p2 == 2
             ts.register_unload_event(on_unload, "PARAM1", 2)
 
     def test_registerUnloadEvent_onMultipleEvents_areCalledInReversedOrder(self):
-        TSDummy = self.cls_from_c_str(b'', 'test3.c')
+        TSDummy = self.cls_from_ccode(b'', 'test3.c')
         with TSDummy() as ts:
             def on_unload(p):
                 calls.append(p)
@@ -475,24 +491,24 @@ class TestTestSetup(object):
         assert calls == [3, 2, 1]
 
     def test_attributeAnnotationSupport_onStdIntIncluded_ok(self):
-        TSDummy = self.cls_from_c_str(b'#include <stdint.h>\n'
+        TSDummy = self.cls_from_ccode(b'#include <stdint.h>\n'
                                       b'int __cdecl cdecl_func(void);',
                                       'attr_annotation_support.c')
         with TSDummy() as ts:
             assert 'cdecl' in ts.cdecl_func.c_attributes
 
     def test_subclassing_addsAttributesToDerivedClassButDoesNotModifyParentClass(self):
-        TSDummy = self.cls_from_c_str(b'int func(void);\n'
+        TSDummy = self.cls_from_ccode(b'int func(void);\n'
                                       b'int var;\n'
                                       b'struct strct {};\n'
                                       b'typedef int typedf;',
                                       'parentcls.c')
-        cmod2 = cmod_from_ccode(b'int func2(void);\n'
-                                b'int var2;\n'
-                                b'struct strct2 {};\n'
-                                b'typedef int typedf2;',
-                                'derivedcls.c')
-        TSDummy2 = cmod2(TSDummy)
+        class TSDummy2(TSDummy): pass
+        self.extend_by_ccode(TSDummy2, b'int func2(void);\n'
+                                       b'int var2;\n'
+                                       b'struct strct2 {};\n'
+                                       b'typedef int typedf2;',
+                             'derivedcls.c')
         with TSDummy() as ts:
             assert all(hasattr(ts, attr) for attr in ('func', 'var', 'typedf'))
             assert not any(hasattr(ts, attr)
@@ -507,12 +523,13 @@ class TestTestSetup(object):
             assert hasattr(ts.struct, 'strct2')
 
     def test_subclassing_onChildClsImplementsMockedMethodFromParentCls_ok(self):
-        TSDummy = self.cls_from_c_str(b'int impl_by_subclass_func(void);\n'
+        TSDummy = self.cls_from_ccode(b'int impl_by_subclass_func(void);\n'
                                       b'int not_impl_func(void);',
                                       'mocked_parentcls.c')
-        cmod2 = cmod_from_ccode(b'int impl_by_subclass_func(void) { return 2; }',
-                                'impl_derivedcls.c')
-        TSDummy2 = cmod2(TSDummy)
+        class TSDummy2(TSDummy): pass
+        self.extend_by_ccode(TSDummy2,
+                             b'int impl_by_subclass_func(void) { return 2; }',
+                             'impl_derivedcls.c')
         with TSDummy() as ts:
             with pytest.raises(MethodNotMockedError):
                 ts.impl_by_subclass_func()
