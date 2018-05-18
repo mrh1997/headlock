@@ -98,20 +98,26 @@ class CModule(CModuleDecoratorBase):
         self.src_filenames = list(map(Path, src_filenames))
         self.predef_macros = predef_macros
 
-    def get_incl_dirs(self):
-        return []
-
     def get_fqn(self, cls):
         rev_qualname = '.'.join(reversed(cls.__qualname__.split('.')))
         return f'{self.src_filenames[0].stem}.{rev_qualname}.{cls.__module__}'
 
     def iter_transunits(self, cls):
-        incl_dirs = self.get_incl_dirs()
+        abs_src_filenames = []
+        abs_incl_dirs = []
         for src_filename in self.src_filenames:
+            item_path = self.resolve_path(src_filename, cls)
+            if item_path.is_dir():
+                abs_incl_dirs.append(item_path)
+            elif item_path.is_file():
+                abs_src_filenames.append(item_path)
+            else:
+                raise IOError('Cannot find C-File / Include-Dir path {}'
+                              .format(item_path))
+        for abs_src_filename in abs_src_filenames:
             yield TransUnit(self.get_fqn(cls),
-                            self.resolve_path(src_filename, cls),
-                            [self.resolve_path(incl_dir, cls)
-                             for incl_dir in incl_dirs],
+                            abs_src_filename,
+                            abs_incl_dirs,
                             self.predef_macros)
 
     def resolve_path(self, filename, cls):
@@ -172,13 +178,11 @@ class TestSetup(BuildInDefs):
 
     @classmethod
     def get_ts_name(cls):
-        mods = list(reversed(cls.__transunits__))
-        if len(mods) == 0:
+        if len(cls.__transunits__) == 0:
             return cls.__name__
         else:
-            c_mods = [m for m in mods if m.abs_src_filename.suffix == '.c']
-            mainfile = (c_mods or mods)[0].abs_src_filename
-            return mainfile.stem + '_' + cls.__name__
+            filename = cls.__transunits__[-1].abs_src_filename
+            return filename.stem + '_' + cls.__name__
 
     @classmethod
     def get_mock_proxy_path(cls):
