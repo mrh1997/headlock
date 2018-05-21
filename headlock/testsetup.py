@@ -1,6 +1,5 @@
 import ctypes as ct
 import os
-import subprocess
 import sys
 import weakref
 import abc
@@ -14,29 +13,26 @@ from .c_data_model import BuildInDefs, CStruct, CEnum, CFunc
 from .c_parser import CParser, ParseError
 
 
-DEFAULT_MINGW64_DIR = r'C:\Program Files (x86)\mingw-w64'
-
-
 BUILD_CACHE = set()
 DISABLE_AUTOBUILD = False
 
 
 class BuildError(Exception):
 
-    def __init__(self, msg, testsetup=None):
+    def __init__(self, msg, path=None):
         super().__init__(msg)
-        self.testsetup = testsetup
+        self.path = path
 
     def __str__(self):
-        return (f'building {self.testsetup.__name__} failed: ' if self.testsetup
+        return (f'building {self.path} failed: ' if self.path
                 else '') \
                + super().__str__()
 
 
 class CompileError(BuildError):
 
-    def __init__(self, errors, goal=None):
-        super().__init__(f'{len(errors)} compile errors', goal)
+    def __init__(self, errors, path=None):
+        super().__init__(f'{len(errors)} compile errors', path)
         self.errors = errors
 
     def __iter__(self):
@@ -50,16 +46,6 @@ class MethodNotMockedError(Exception):
 
 class CustomTypeContainer:
     pass
-
-
-def get_mingw_dir():
-    mingw64_dir = Path(os.environ.get('MINGW64_DIR', DEFAULT_MINGW64_DIR))
-    envs = list(mingw64_dir.glob(r'i686-*-*-dwarf-rt_v5-*\mingw32'))
-    if not envs:
-        raise BuildError(f'no MinGW64 found in {mingw64_dir} '
-                         f'(see MINGW64_DIR environment variable)')
-    envs.sort()
-    return envs[-1]
 
 
 TransUnit = namedtuple(
@@ -125,6 +111,40 @@ class CModule(CModuleDecoratorBase):
         return Path(mod.__file__).parent / filename
 
 
+class ToolChainDriver:
+    """
+    This is an abstract base class for all ToolChain-Drivers.
+    a toolchain is the compiler, linker, libraries and header files.
+    """
+
+    CLANG_TARGET = ''
+
+    def sys_predef_macros(self):
+        """
+        A dictionary of toolchain-inhernt macros, that shall be always
+        predefined additionally to the predefined macros provided by clang
+        """
+        return {}
+
+    @abc.abstractmethod
+    def sys_incl_dirs(self):
+        """
+        retrieves a list of all system include directories
+        """
+
+    @abc.abstractmethod
+    def exe_path(self, build_dir, name):
+        """
+        returns name of executable image
+        """
+
+    @abc.abstractmethod
+    def build(self, transunits, build_dir, name):
+        """
+        builds executable image from translation units 'transunits'
+        """
+
+
 class TestSetup(BuildInDefs):
 
     struct = CustomTypeContainer()
@@ -136,6 +156,7 @@ class TestSetup(BuildInDefs):
     __test__ = False   # avoid that pytest/nose/... collect this as test
 
     __parser_factory__ = CParser
+    __TOOLCHAIN__:ToolChainDriver = None
 
     __globals = {}
     __mocks = set()
@@ -158,7 +179,8 @@ class TestSetup(BuildInDefs):
     @classmethod
     def get_build_dir(cls):
         static_qualname = cls.__qualname__.replace('.<locals>.', '.')
-        static_dir = cls.get_src_dir() / cls._BUILD_DIR_ / static_qualname
+        static_dir = cls.get_src_dir() / cls._BUILD_DIR_ \
+                     / cls.get_ts_abspath().stem / static_qualname
         if cls.__qualname__ == static_qualname:
             return static_dir
         else:
@@ -173,14 +195,6 @@ class TestSetup(BuildInDefs):
             return Path(str(static_dir) + '_' + hash.hexdigest())
 
     @classmethod
-    def get_mock_proxy_path(cls):
-        return cls.get_build_dir() / f'{cls.get_ts_name()}_mocks.c'
-
-    @classmethod
-    def get_executable_path(cls):
-        return cls.get_build_dir() / f'{cls.get_ts_name()}.dll'
-
-    @classmethod
     def get_ts_name(cls):
         if len(cls.__transunits__) == 0:
             return cls.__name__
@@ -190,11 +204,13 @@ class TestSetup(BuildInDefs):
 
     @classmethod
     def __extend_by_transunit__(cls, transunit):
+        predef_macros = cls.__TOOLCHAIN__.sys_predef_macros()
+        predef_macros.update(transunit.predef_macros)
         parser = cls.__parser_factory__(
-            transunit.predef_macros,
-            list(map(str, transunit.abs_incl_dirs)),
-            [str(get_mingw_dir() / 'i686-w64-mingw32/include')],
-            target_compiler='i386-pc-mingw32')
+            predef_macros,
+            transunit.abs_incl_dirs,
+            cls.__TOOLCHAIN__.sys_incl_dirs(),
+            target_compiler=cls.__TOOLCHAIN__.CLANG_TARGET)
         try:
             parser.read(str(transunit.abs_src_filename))
         except ParseError as exc:
@@ -240,7 +256,7 @@ class TestSetup(BuildInDefs):
     def __logger__(cls):
         return None
 
-    def __build__(self):
+    def __build_mock_proxy__(self):
         def mock_proxy_generator():
             def iter_in_dep_order(only_full_defs=False):
                 already_processed = set()
@@ -275,49 +291,26 @@ class TestSetup(BuildInDefs):
                     yield f'(* {mock_name}_mock)({params});\n'
                     yield '}\n'
 
-        def mock_proxy_writer():
-            with open(self.get_mock_proxy_path(), 'wt') as f:
-                for text_chunk in mock_proxy_generator():
-                    f.write(text_chunk)
+        mock_proxy_path = self.get_build_dir() / f'{self.get_ts_name()}_mocks.c'
+        mock_proxy_ccode = ''.join(mock_proxy_generator())
+        mock_proxy_path.write_text(mock_proxy_ccode)
 
-        def run_gcc(call_params):
-            try:
-                completed_proc = subprocess.run(
-                    [str(get_mingw_dir() / 'bin' / 'gcc')] + call_params,
-                    encoding='ascii',
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE)
-            except (subprocess.CalledProcessError, FileNotFoundError) as e:
-                raise BuildError(f'failed to call gcc: {e}',
-                                 type(self))
-            else:
-                if completed_proc.returncode != 0:
-                    raise BuildError(completed_proc.stderr, type(self))
+        return mock_proxy_path
 
-        def build_dll():
-            mock_tu = TransUnit('mocks', self.get_mock_proxy_path(), [], {})
-            transunits = self.__transunits__ + (mock_tu,)
-            for tu in transunits:
-                run_gcc(['-c', str(tu.abs_src_filename)]
-                        + ['-o', str(self.get_build_dir()
-                                     / (tu.abs_src_filename.stem + '.o'))]
-                        + ['-I' + str(incl_dir)
-                           for incl_dir in tu.abs_incl_dirs]
-                        + [f'-D{name}={val or ""}'
-                           for name, val in tu.predef_macros.items()])
-            run_gcc([str(self.get_build_dir()
-                         / (tu.abs_src_filename.stem + '.o'))
-                     for tu in transunits]
-                    + ['-shared', '-o', str(self.get_executable_path())])
-
+    def __build__(self):
         if not DISABLE_AUTOBUILD:
             if not self.get_build_dir().exists():
                 self.get_build_dir().mkdir(parents=True)
-            mock_proxy_writer()
-            build_dll()
+            mock_proxy_path = self.__build_mock_proxy__()
+            mock_tu = TransUnit('mocks', mock_proxy_path, [], {})
+            self.__TOOLCHAIN__.build(self.__transunits__ + (mock_tu,),
+                                     self.get_build_dir(),
+                                     self.get_ts_name())
 
     def __load__(self):
-        self.__dll = ct.CDLL(str(self.get_executable_path()))
+        exepath = self.__TOOLCHAIN__.exe_path(self.get_build_dir(),
+                                              self.get_ts_name())
+        self.__dll = ct.CDLL(os.fspath(exepath))
         try:
             for name, cobj_type in self.__globals.items():
                 if issubclass(cobj_type, CFunc):
@@ -385,3 +378,9 @@ class TestSetup(BuildInDefs):
         unloaded via __unload__()
         """
         self.__unload_events.append((func, args))
+
+
+# This is a preliminary workaround until there is a clean solution on
+# how to configure toolchains.
+from .toolchains.mingw32 import MinGW32ToolChain
+TestSetup.__TOOLCHAIN__ = MinGW32ToolChain()

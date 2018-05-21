@@ -7,5 +7,5 @@ setup(
     author='Robert Hoelzl',
     author_email='robert.hoelzl@posteo.de',
     url='https://github.com/mrh1997/headlock',
-    packages=['headlock', 'headlock.libclang'],
+    packages=['headlock', 'headlock.libclang', 'headlock.toolchains'],
 )

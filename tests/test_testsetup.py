@@ -36,8 +36,9 @@ class TestBuildError:
         assert str(exc) == 'error abc'
 
     def test_getStr_withTestSetupPassed_returnsStrWithTestSetupClassName(self):
-        exc = BuildError('cannot do xyz', TSDummy)
-        assert str(exc) == 'building TSDummy failed: cannot do xyz'
+        filepath = Path('c_files/empty.c')
+        exc = BuildError('cannot do xyz', filepath)
+        assert str(exc) == f'building {filepath} failed: cannot do xyz'
 
 
 class TestCompileError:
@@ -45,8 +46,8 @@ class TestCompileError:
     def test_getStr_returnsNumberOfErrors(self):
         exc = CompileError([('err 1', 'file1.c', 3),
                             ('err 2', 'file2.h', 3)],
-                           TSDummy)
-        assert str(exc) == 'building TSDummy failed: 2 compile errors'
+                           Path('test.c'))
+        assert str(exc) == 'building test.c failed: 2 compile errors'
 
     def test_iter_iteratesErrors(self):
         errlist = [('err 1', 'file1.c', 3), ('err 2', 'file2.h', 3)]
@@ -220,14 +221,14 @@ class TestTestSetup(object):
     def test_getBuildDir_onStaticTSCls_returnsPathQualName(self):
         this_file = Path(__file__).resolve()
         assert self.TSEmpty.get_build_dir() \
-               == this_file.parent / TestSetup._BUILD_DIR_ \
+               == this_file.parent / TestSetup._BUILD_DIR_ / 'test_testsetup' \
                   / 'TestTestSetup.TSEmpty'
 
     def test_getBuildDir_onDynamicGeneratedTSCls_returnsPathWithQualNameAndUid(self):
         this_file = Path(__file__).resolve()
         TSDummy = self.cls_from_ccode(b'', 'test.c')
         assert Path(str(TSDummy.get_build_dir())[:-32]) \
-               == this_file.parent / TestSetup._BUILD_DIR_ \
+               == this_file.parent / TestSetup._BUILD_DIR_ / 'test_testsetup' \
                   / 'TestTestSetup.cls_from_ccode.TSDummy_'
         int(str(TSDummy.get_build_dir())[-32:], 16) #expect hexnumber at the end
 
@@ -249,11 +250,6 @@ class TestTestSetup(object):
         TSClassName.__extend_by_transunit__(
             TransUnit('', Path(tmpdir.join('dir/src2.c')), [], {}))
         assert TSClassName.get_ts_name() == 'src2_TSClassName'
-
-    def test_getMockProxyPath_ok(self):
-        assert self.TSEmpty.get_mock_proxy_path() \
-               == self.TSEmpty.get_build_dir()  \
-                  / (self.TSEmpty.get_ts_name() + '_mocks.c')
 
     def test_getTsName_onNoSourceFiles_returnsClassNameOnly(self):
         class TSClassName(TestSetup): pass
