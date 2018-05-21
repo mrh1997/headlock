@@ -1,30 +1,26 @@
 import contextlib
-
+from pathlib import Path
 import pytest
-from headlock.testsetup import TestSetup, MethodNotMockedError, \
-    BuildError, CompileError, CModuleDecoratorBase, CModule, TransUnit
-import os
 import subprocess
 from unittest.mock import patch, Mock, MagicMock, call
+
+from .helpers import build_tree
+from headlock.testsetup import TestSetup, MethodNotMockedError, \
+    BuildError, CompileError, CModuleDecoratorBase, CModule, TransUnit
 from headlock.c_data_model import CStruct, CEnum, CInt
-from pathlib import Path
 
 
 class TSDummy:
     pass
 
-def build_dir(base_dir, content):
-    for sub_name, sub_content in content.items():
-        if isinstance(sub_content, dict):
-            base_dir.mkdir(sub_name)
-            build_dir(base_dir.join(sub_name), sub_content)
-        else:
-            base_dir.join(sub_name).write_binary(sub_content)
-
 @contextlib.contextmanager
-def sim_tsdummy_dir(base_dir, content):
+def sim_tsdummy_tree(base_dir, tree):
+    """
+    Simulate, that TSDummy is located in 'base_dir' and 'tree' is the file
+    structure below this directory.
+    """
     global __file__
-    build_dir(base_dir, content)
+    build_tree(base_dir, tree)
     saved_file = __file__
     __file__ = str(base_dir.join('test_testsetup.py'))
     try:
@@ -85,13 +81,13 @@ class TestCModuleDecoratorBase:
 class TestCModule:
 
     def test_iterTransunits_onRelSrcFilename_resolves(self, tmpdir):
-        with sim_tsdummy_dir(tmpdir, {'dir': {'src': b''}}):
+        with sim_tsdummy_tree(tmpdir, {'dir': {'src': b''}}):
             c_mod = CModule('dir/src')
             [transunit] = c_mod.iter_transunits(TSDummy)
             assert transunit.abs_src_filename == Path(tmpdir.join('dir/src'))
 
     def test_iterTransunits_onAbsSrcFilename_resolves(self, tmpdir):
-        build_dir(tmpdir, {'dir': {'src': b''}})
+        build_tree(tmpdir, {'dir': {'src': b''}})
         abs_path = str(tmpdir.join('dir/src'))
         c_mod = CModule(abs_path)
         [transunit] = c_mod.iter_transunits(TSDummy)
@@ -101,34 +97,34 @@ class TestCModule:
         pass
 
     def test_iterTransunits_setsSubsysName(self, tmpdir):
-        with sim_tsdummy_dir(tmpdir, {'t1.c': b'', 't2.c': b''}):
+        with sim_tsdummy_tree(tmpdir, {'t1.c': b'', 't2.c': b''}):
             c_mod = CModule('t1.c', 't2.c')
             [transunit, *_] = c_mod.iter_transunits(self.TSSubClass)
             assert transunit.subsys_name \
                    == 't1.TSSubClass.TestCModule.test_testsetup'
 
     def test_iterTransunits_retrievesAndResolvesIncludeDirs(self, tmpdir):
-        with sim_tsdummy_dir(tmpdir, {'src': b'', 'd1': {}, 'd2': {}}):
+        with sim_tsdummy_tree(tmpdir, {'src': b'', 'd1': {}, 'd2': {}}):
             c_mod = CModule('src', 'd1', 'd2')
             [transunit] = c_mod.iter_transunits(TSDummy)
             assert transunit.abs_incl_dirs == [Path(tmpdir.join('d1')),
                                                Path(tmpdir.join('d2'))]
 
     def test_iterTransunits_createsOneUnitTestPerSrcFilename(self, tmpdir):
-        with sim_tsdummy_dir(tmpdir, {'t1.c': b'', 't2.c': b''}):
+        with sim_tsdummy_tree(tmpdir, {'t1.c': b'', 't2.c': b''}):
             c_mod = CModule('t1.c', 't2.c')
             assert [tu.abs_src_filename
                     for tu in c_mod.iter_transunits(TSDummy)] \
                     == [Path(tmpdir.join('t1.c')), Path(tmpdir.join('t2.c'))]
 
     def test_iterTransunits_onPredefMacros_passesMacrosToCompParams(self, tmpdir):
-        with sim_tsdummy_dir(tmpdir, {'src': b''}):
+        with sim_tsdummy_tree(tmpdir, {'src': b''}):
             c_mod = CModule('src', MACRO1=11, MACRO2=22)
             [transunit] = c_mod.iter_transunits(TSDummy)
             assert transunit.predef_macros == {'MACRO1':11, 'MACRO2':22}
 
     def test_iterTransunits_onIncludeDirectories_resolvesDirs(self, tmpdir):
-        with sim_tsdummy_dir(tmpdir, {'src': {'main.c': b''}, 'inc': {}}):
+        with sim_tsdummy_tree(tmpdir, {'src': {'main.c': b''}, 'inc': {}}):
             c_mod = CModule('src\main.c', 'inc')
             [transunit] = c_mod.iter_transunits(TSDummy)
             assert transunit.abs_incl_dirs == [Path(tmpdir.join('inc'))]
@@ -209,63 +205,55 @@ class TestTestSetup(object):
             self.c_mixin_from(b'#error p',
                               'compile_err_mixin_nodelay.c', base=TSDelayErrors)
 
-    @pytest.yield_fixture
-    def from_parent_dir(self):
-        saved_cwd = os.getcwd()
-        dirname = os.path.dirname(__file__)
-        parent_dirname = os.path.dirname(dirname)
-        os.chdir(parent_dirname)
-        try:
-            yield os.path.basename(dirname)
-        finally:
-            os.chdir(saved_cwd)
-
-    def test_getTsAbspath_returnsAbsPathOfFile(self, from_parent_dir):
+    def test_getTsAbspath_returnsAbsPathOfFile(self):
         TSDummy = self.cls_from_ccode(b'', 'test.c')
-        assert TSDummy.get_ts_abspath() \
-               == os.path.join(os.path.abspath(from_parent_dir),
-                               'test_testsetup.py')
+        assert TSDummy.get_ts_abspath() == Path(__file__).resolve()
 
-    def test_getSrcDir_returnsAbsDirOfFile(self, from_parent_dir):
+    def test_getSrcDir_returnsAbsDirOfFile(self):
         TSDummy = self.cls_from_ccode(b'', 'test.c')
-        assert TSDummy.get_src_dir() == os.path.abspath(from_parent_dir)
+        assert TSDummy.get_src_dir() == Path(__file__).resolve().parent
 
     class TSEmpty(TestSetup):
         __transunits__ = [TransUnit('empty', Path(__file__, 'c_files/empty.c'),
                                     [], {})]
 
-    def test_getBuildDir_onStaticTSCls_returnsPathQualName(self, from_parent_dir):
+    def test_getBuildDir_onStaticTSCls_returnsPathQualName(self):
+        this_file = Path(__file__).resolve()
         assert self.TSEmpty.get_build_dir() \
-               == os.path.normpath(os.path.join(os.path.abspath(__file__), '..',
-                                                TestSetup._BUILD_DIR_,
-                                                'TestTestSetup.TSEmpty'))
+               == this_file.parent / TestSetup._BUILD_DIR_ \
+                  / 'TestTestSetup.TSEmpty'
 
-    def test_getBuildDir_onDynamicGeneratedTSCls_returnsPathWithQualNameAndUid(self, from_parent_dir):
+    def test_getBuildDir_onDynamicGeneratedTSCls_returnsPathWithQualNameAndUid(self):
+        this_file = Path(__file__).resolve()
         TSDummy = self.cls_from_ccode(b'', 'test.c')
-        assert TSDummy.get_build_dir()[:-32] \
-               == os.path.join(os.path.abspath(from_parent_dir),
-                               TestSetup._BUILD_DIR_,
-                               'TestTestSetup.cls_from_ccode.TSDummy_')
-        int(TSDummy.get_build_dir()[-32:], 16)   # expect hexnumber at the end
+        assert Path(str(TSDummy.get_build_dir())[:-32]) \
+               == this_file.parent / TestSetup._BUILD_DIR_ \
+                  / 'TestTestSetup.cls_from_ccode.TSDummy_'
+        int(str(TSDummy.get_build_dir())[-32:], 16) #expect hexnumber at the end
 
-    def test_getBuildDir_onDynamicGeneratedTSClsWithSameParams_returnsSameDir(self, from_parent_dir):
+    def test_getBuildDir_onDynamicGeneratedTSClsWithSameParams_returnsSameDir(self):
         TSDummy1 = self.cls_from_ccode(b'', 'test.c')
         TSDummy2 = self.cls_from_ccode(b'', 'test.c')
         assert TSDummy1.get_build_dir() == TSDummy2.get_build_dir()
 
-    def test_getBuildDir_onDynamicGeneratedTSClsWithDifferentParams_returnsDifferentDir(self, from_parent_dir):
+    def test_getBuildDir_onDynamicGeneratedTSClsWithDifferentParams_returnsDifferentDir(self):
         TSDummy1 = self.cls_from_ccode(b'', 'test.c', A=1, B=222, C=3)
         TSDummy2 = self.cls_from_ccode(b'', 'test.c', A=1, B=2, C=3)
         assert TSDummy1.get_build_dir() != TSDummy2.get_build_dir()
 
     def test_getTsName_returnFirstFileNamePlusClassName(self, tmpdir):
-        build_dir(tmpdir, {'dir': {'src1.c': b'', 'src2.c': b''}})
+        build_tree(tmpdir, {'dir': {'src1.c': b'', 'src2.c': b''}})
         class TSClassName(TestSetup): pass
         TSClassName.__extend_by_transunit__(
             TransUnit('', Path(tmpdir.join('dir/src1.c')), [], {}))
         TSClassName.__extend_by_transunit__(
             TransUnit('', Path(tmpdir.join('dir/src2.c')), [], {}))
         assert TSClassName.get_ts_name() == 'src2_TSClassName'
+
+    def test_getMockProxyPath_ok(self):
+        assert self.TSEmpty.get_mock_proxy_path() \
+               == self.TSEmpty.get_build_dir()  \
+                  / (self.TSEmpty.get_ts_name() + '_mocks.c')
 
     def test_getTsName_onNoSourceFiles_returnsClassNameOnly(self):
         class TSClassName(TestSetup): pass

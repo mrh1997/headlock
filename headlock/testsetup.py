@@ -1,6 +1,5 @@
 import ctypes as ct
 import os
-import os.path
 import subprocess
 import sys
 import weakref
@@ -100,7 +99,8 @@ class CModule(CModuleDecoratorBase):
 
     def get_fqn(self, cls):
         rev_qualname = '.'.join(reversed(cls.__qualname__.split('.')))
-        return f'{self.src_filenames[0].stem}.{rev_qualname}.{cls.__module__}'
+        *_, modname = cls.__module__.split('.')
+        return f'{self.src_filenames[0].stem}.{rev_qualname}.{modname}'
 
     def iter_transunits(self, cls):
         abs_src_filenames = []
@@ -149,21 +149,17 @@ class TestSetup(BuildInDefs):
     @classmethod
     def get_ts_abspath(cls):
         src_filename = sys.modules[cls.__module__].__file__
-        return os.path.normpath(os.path.abspath(src_filename))
+        return Path(src_filename).resolve()
 
     @classmethod
     def get_src_dir(cls):
-        return os.path.dirname(cls.get_ts_abspath())
-
-    @classmethod
-    def get_root_dir(cls):
-        return os.path.dirname(os.path.dirname(__file__))
+        return cls.get_ts_abspath().parent
 
     @classmethod
     def get_build_dir(cls):
-        static_dir = os.path.join(cls.get_src_dir(), cls._BUILD_DIR_,
-                                  cls.__qualname__.replace('.<locals>.', '.'))
-        if '.<locals>.' not in cls.__qualname__:
+        static_qualname = cls.__qualname__.replace('.<locals>.', '.')
+        static_dir = cls.get_src_dir() / cls._BUILD_DIR_ / static_qualname
+        if cls.__qualname__ == static_qualname:
             return static_dir
         else:
             # this is a dynamicially generated class
@@ -174,7 +170,15 @@ class TestSetup(BuildInDefs):
                 hash.update(repr(sorted(tu.abs_incl_dirs)).encode('utf8'))
                 hash.update(repr(sorted(tu.predef_macros.items()))
                             .encode('utf8'))
-            return static_dir + '_' + hash.hexdigest()
+            return Path(str(static_dir) + '_' + hash.hexdigest())
+
+    @classmethod
+    def get_mock_proxy_path(cls):
+        return cls.get_build_dir() / f'{cls.get_ts_name()}_mocks.c'
+
+    @classmethod
+    def get_executable_path(cls):
+        return cls.get_build_dir() / f'{cls.get_ts_name()}.dll'
 
     @classmethod
     def get_ts_name(cls):
@@ -183,14 +187,6 @@ class TestSetup(BuildInDefs):
         else:
             filename = cls.__transunits__[-1].abs_src_filename
             return filename.stem + '_' + cls.__name__
-
-    @classmethod
-    def get_mock_proxy_path(cls):
-        return os.path.join(cls.get_build_dir(), f'{cls.get_ts_name()}_mocks.c')
-
-    @classmethod
-    def get_makefile_path(cls):
-        return os.path.join(cls.get_build_dir(), 'Makefile')
 
     @classmethod
     def __extend_by_transunit__(cls, transunit):
@@ -299,30 +295,29 @@ class TestSetup(BuildInDefs):
                     raise BuildError(completed_proc.stderr, type(self))
 
         def build_dll():
-            mock_proxy_src = Path(self.get_mock_proxy_path())
-            mock_tu = TransUnit('mocks', mock_proxy_src, [], {})
+            mock_tu = TransUnit('mocks', self.get_mock_proxy_path(), [], {})
             transunits = self.__transunits__ + (mock_tu,)
-            build_dir = Path(self.get_build_dir())
             for tu in transunits:
                 run_gcc(['-c', str(tu.abs_src_filename)]
-                        + ['-o', str(build_dir
+                        + ['-o', str(self.get_build_dir()
                                      / (tu.abs_src_filename.stem + '.o'))]
                         + ['-I' + str(incl_dir)
                            for incl_dir in tu.abs_incl_dirs]
                         + [f'-D{name}={val or ""}'
                            for name, val in tu.predef_macros.items()])
-            run_gcc([str(build_dir / (tu.abs_src_filename.stem + '.o'))
+            run_gcc([str(self.get_build_dir()
+                         / (tu.abs_src_filename.stem + '.o'))
                      for tu in transunits]
-                    + ['-shared', '-o', str(build_dir / 'cmodule.dll')])
+                    + ['-shared', '-o', str(self.get_executable_path())])
 
         if not DISABLE_AUTOBUILD:
-            if not os.path.exists(self.get_build_dir()):
-                os.makedirs(self.get_build_dir())
+            if not self.get_build_dir().exists():
+                self.get_build_dir().mkdir(parents=True)
             mock_proxy_writer()
             build_dll()
 
     def __load__(self):
-        self.__dll = ct.CDLL(os.path.join(self.get_build_dir(), 'cmodule.dll'))
+        self.__dll = ct.CDLL(str(self.get_executable_path()))
         try:
             for name, cobj_type in self.__globals.items():
                 if issubclass(cobj_type, CFunc):

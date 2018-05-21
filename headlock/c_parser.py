@@ -1,9 +1,10 @@
-from .c_data_model import BuildInDefs, CObjType, CFunc, CStruct, CEnum
-from .libclang.cindex import CursorKind, StorageClass, TypeKind
-from headlock.libclang.cindex import TranslationUnit, Config, \
-    TranslationUnitLoadError
 import re
 import os
+from pathlib import Path
+
+from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
+    TranslationUnit, Config, TranslationUnitLoadError
+from .c_data_model import BuildInDefs, CObjType, CFunc, CStruct, CEnum
 
 
 Config.set_library_path(r'C:\Program Files (x86)\LLVM\bin')
@@ -327,12 +328,12 @@ class CParser:
         def sys_inc_dir_args(sys_include_dirs):
             for sys_inc_dir in sys_include_dirs:
                 yield '-isystem'
-                yield sys_inc_dir
+                yield os.fspath(sys_inc_dir)
         try:
             predefs = self.predef_macros.items()
             tu = TranslationUnit.from_source(
-                file_name,
-                unsaved_files=[(nm, c.decode('ascii'))
+                os.fspath(file_name),
+                unsaved_files=[(os.fspath(nm), c.decode('ascii'))
                                for nm, c in patches.items()],
                 args=[f'-I{inc_dir}' for inc_dir in self.include_dirs]
                      + [f'-D{mname}={mval or ""}' for mname, mval in predefs]
@@ -343,8 +344,8 @@ class CParser:
         except TranslationUnitLoadError as e:
             raise FileNotFoundError(
                 f'File {file_name} cannot be opened/is invalid') from e
-        self.source_files.add(os.path.normpath(os.path.abspath(file_name)))
-        self.source_files |= {os.path.normpath(i.include.name)
+        self.source_files.add(Path(file_name).resolve())
+        self.source_files |= {Path(i.include.name).resolve()
                               for i in tu.get_includes()
                               if not self.is_sys_func(i.include.name)}
         errors = [diag for diag in tu.diagnostics
@@ -354,15 +355,15 @@ class CParser:
                 (err.spelling, err.location.file.name, err.location.line)
                 for err in errors if err.location.file is not None])
         self.read_from_cursor(tu.cursor)
-        files = {os.path.normpath(name): open(name, 'rb').read()
+        files = {Path(name).resolve(): Path(name).read_bytes()
                  for name, start, end in self.macro_locs.values()}
-        files.update({os.path.normpath(nm): c for nm, c in patches.items()})
+        files.update({Path(nm).resolve(): c for nm, c in patches.items()})
         for macro_name, (fname, start, end) in self.macro_locs.items():
-            fcontent = files[os.path.normpath(fname)]
+            fcontent = files[Path(fname).resolve()]
             macro_text = fcontent[start:end].replace(b'\n\f', b'\n')
             macro_def = MacroDef.create_from_srccode(macro_text.decode('ascii'))
             self.macros[macro_name] = macro_def
 
     def is_sys_func(self, src_filename):
-        return any(src_filename.startswith(sysdir)
+        return any(src_filename.startswith(os.fspath(sysdir))
                    for sysdir in self.sys_include_dirs)

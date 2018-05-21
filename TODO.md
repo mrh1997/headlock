@@ -13,7 +13,6 @@ Small (can be done by occassion)
   Could be optimized...
 * support relative filenames in SOURCEFILES
 * add all variables/typedefs to a separate namespace .typedef and .globals
-* switch testsetup.py to pathlib
 * pyplugin and os_mock currently construct cyclic references by storing
   bound functions (for the callbacks). Should be replaced by WeakMethods and
   CFunc has to support these WeakMethods.

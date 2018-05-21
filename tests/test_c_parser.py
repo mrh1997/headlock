@@ -1,10 +1,10 @@
-import contextlib
 from unittest.mock import Mock, MagicMock, patch
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 import pytest
+from .helpers import build_tree
 from headlock.libclang.cindex import TranslationUnit
 from headlock.c_parser import CParser, MacroDef, ParseError
 from headlock.c_data_model import BuildInDefs as bd, CFunc, CStruct, CEnum
-from tempfile import NamedTemporaryFile, TemporaryDirectory
 import os
 
 
@@ -549,43 +549,35 @@ class TestCParser:
         assert parser.macros['MACRO'] \
                == MacroDef('MACRO', compile('3', '<string>', 'eval'))
 
-    def test_read_onIncludes_addsIncludeFileNamesToSourceFiles(self):
-        with TemporaryDirectory() as temp_dir:
-            c_filename = os.path.join(temp_dir, 'source.c')
-            h1_filename = os.path.join(temp_dir, 'include_1.h')
-            h2_filename = os.path.join(temp_dir, 'include_2.h')
-            open(c_filename, 'wt').write('#include "include_1.h"')
-            open(h1_filename, 'wt').write('#include "include_2.h"')
-            open(h2_filename, 'wt').write('')
-            parser = CParser()
-            parser.read(c_filename)
-            assert parser.source_files == {c_filename, h1_filename, h2_filename}
+    def test_read_onIncludes_addsIncludeFileNamesToSourceFiles(self, tmpdir):
+        basedir = build_tree(tmpdir, {
+            'source.c': b'#include "include_1.h"',
+            'include_1.h': b'#include "include_2.h"',
+            'include_2.h': b''})
+        parser = CParser()
+        parser.read(basedir / 'source.c')
+        assert parser.source_files \
+               == { basedir / 'source.c',
+                    basedir / 'include_1.h',
+                    basedir / 'include_2.h'}
 
-    def test_read_onAdditionalIncludeDirs_searchIncludeDirs(self):
-        with TemporaryDirectory() as temp_dir:
-            header_dir = os.path.join(temp_dir, 'subdir', 'dir with space')
-            h_fname = os.path.join(header_dir, 'test.h')
-            c_fname = os.path.join(temp_dir, 'test.c')
-            os.makedirs(header_dir)
-            open(h_fname, 'wt').write('int func(void);')
-            open(c_fname, 'wt').write('#include "test.h"')
-            parser = CParser(include_dirs=[header_dir])
-            parser.read(c_fname)
-            assert 'func' in parser.funcs
-            assert 'func' not in parser.implementations
+    def test_read_onAdditionalIncludeDirs_searchIncludeDirs(self, tmpdir):
+        basedir = build_tree(tmpdir, {
+            'test.c': b'#include "test.h"',
+            'sub dir': {
+                'test.h': b'int func(void);'}})
+        parser = CParser(include_dirs=[basedir / 'sub dir'])
+        parser.read(basedir / 'test.c')
+        assert 'func' in parser.funcs
 
-    def test_read_onSystemIncludeDirs_searchPassedSysIncludeDirsAndIgnoreFuncsAndSourceFiles(self):
-        with TemporaryDirectory() as temp_dir:
-            header_dir = os.path.join(temp_dir, 'subdir', 'dir with space')
-            h_fname = os.path.join(header_dir, 'test.h')
-            c_fname = os.path.join(temp_dir, 'test.c')
-            os.makedirs(header_dir)
-            open(h_fname, 'wt').write('int func(void);')
-            open(c_fname, 'wt').write('#include <test.h>')
-            parser = CParser(sys_include_dirs=[header_dir])
-            parser.read(c_fname)
-            assert 'func' not in parser.funcs
-            assert h_fname not in parser.source_files
+    def test_read_onSystemIncludeDirs_searchPassedSysIncludeDirsAndIgnoreFuncsAndSourceFiles(self, tmpdir):
+        basedir = build_tree(tmpdir, {'test.c': b'#include <test.h>',
+                                      'sys-incl': {
+                                          'test.h': b'int func(void);'}})
+        parser = CParser(sys_include_dirs=[basedir / 'sys-incl'])
+        parser.read(basedir / 'test.c')
+        assert 'func' not in parser.funcs
+        assert parser.source_files == {basedir / 'test.c'}
 
     def test_read_onPredefinedMacroDict_doesNotModifyPredefinedMacroDict(self, tmpdir):
         c_file = tmpdir.join('predef_macro.c')
