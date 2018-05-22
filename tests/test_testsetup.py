@@ -351,6 +351,12 @@ class TestTestSetup(object):
             ts.var.val = 11
             assert ts.var.val == 11
 
+    def test_headerFileOnly_createsMockOnly(self):
+        TSMock = self.cls_from_ccode(b'int func();', 'header.h')
+        with TSMock() as ts:
+            ts.func_mock = Mock(return_value=123)
+            assert ts.func() == 123
+
     def test_mockFuncWrapper_ok(self):
         class TSMock(TestSetup):
             func_mock = Mock(return_value=33)

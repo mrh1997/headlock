@@ -238,7 +238,8 @@ class TestSetup(BuildInDefs):
                 setattr(cls, name, macro_def)
 
             cls.__mocks = set(cls.__globals) - parser.implementations
-        cls.__transunits__ = cls.__transunits__ + (transunit,)
+        if transunit.abs_src_filename.suffix != '.h':
+            cls.__transunits__ = cls.__transunits__ + (transunit,)
 
     def __init__(self):
         super(TestSetup, self).__init__()
