@@ -1,6 +1,9 @@
 import subprocess
 import os
 from pathlib import Path
+import winreg
+import itertools
+import fnmatch
 
 from ..testsetup import ToolChainDriver, BuildError
 
@@ -8,24 +11,66 @@ from ..testsetup import ToolChainDriver, BuildError
 class MinGW32ToolChain(ToolChainDriver):
 
     CLANG_TARGET = 'i386-pc-mingw32'
-    DEFAULT_MINGW64_DIR = r'C:\Program Files (x86)\mingw-w64'
 
-    def _get_mingw_dir(self):
-        mingwdir = Path(os.environ.get('MINGW64_DIR', self.DEFAULT_MINGW64_DIR))
-        envs = list(mingwdir.glob(r'i686-*-*-dwarf-rt_v5-*\mingw32'))
-        if not envs:
-            raise BuildError(f'no MinGW64 found in {mingwdir} '
-                             f'(see MINGW64_DIR environment variable)')
-        envs.sort()
-        return envs[-1]
+    def __init__(self, architecture=None, version=None, thread_model=None,
+                 exception_model=None, rev=None, mingw_install_dir=None):
+        super().__init__()
+        if mingw_install_dir is None:
+            self.mingw_install_dir = self._autodetect_mingw_dir(
+                architecture, version, thread_model, exception_model, rev)
+        else:
+            self.mingw_install_dir = mingw_install_dir
+
+    def _autodetect_mingw_dir(
+            self, architecture, version, thread_model, exception_model, rev):
+        def iter_uninstall_progkeys():
+            uninst_keyname = r"SOFTWARE\WOW6432Node\Microsoft\Windows" \
+                                r"\CurrentVersion\Uninstall"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, uninst_keyname) \
+                    as uninst_key:
+                for ndx in itertools.count(0):
+                    try:
+                        subkey_name = winreg.EnumKey(uninst_key, ndx)
+                    except OSError:
+                        break
+                    if not subkey_name.startswith('{'):
+                        with winreg.OpenKey(uninst_key, subkey_name) as subkey:
+                            yield subkey_name, subkey
+
+        mingw_filter = f"{architecture or '*'}-{version or '*'}" \
+                       f"-{thread_model or '*'}-{exception_model or '*'}" \
+                       f"-*-{rev or '*'}"
+        mingw_install_dirs = {}
+        for progkey_name, progkey in iter_uninstall_progkeys():
+            try:
+                publisher_name, publisher_type = \
+                    winreg.QueryValueEx(progkey, "Publisher")
+                install_dir, install_dir_type = \
+                    winreg.QueryValueEx(progkey, "InstallLocation")
+            except OSError:
+                pass
+            else:
+                install_dir_path = Path(install_dir)
+                if install_dir_type == publisher_type == winreg.REG_SZ \
+                        and publisher_name == 'MinGW-W64' \
+                        and install_dir_path.exists() \
+                        and fnmatch.fnmatch(install_dir_path.name,mingw_filter):
+                    mingw_install_dirs[progkey_name] = install_dir_path
+
+        if len(mingw_install_dirs) == 0:
+            raise BuildError(
+                f'Requested MinGW Version ({mingw_filter}) was not found '
+                f'on this system')
+        _, mingw_install_dir = max(mingw_install_dirs.items())
+        return mingw_install_dir / 'mingw32'
 
     def sys_incl_dirs(self):
-        return [str(self._get_mingw_dir() / 'i686-w64-mingw32/include')]
+        return [self.mingw_install_dir / 'i686-w64-mingw32/include']
 
     def _run_gcc(self, call_params, dest_file):
         try:
             completed_proc = subprocess.run(
-                [str(self._get_mingw_dir() / 'bin' / 'gcc')] + call_params,
+                [str(self.mingw_install_dir / 'bin' / 'gcc')] + call_params,
                 encoding='ascii',
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE)
