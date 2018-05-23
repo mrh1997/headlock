@@ -394,6 +394,30 @@ class TestTestSetup(object):
                 assert ts.mock_fallback('unmocked_func', 11, 22)
             assert "unmocked_func" in str(excinfo.value)
 
+    def test_mockFuncWrapper_onRefersToPrevTransUnit_isGenerated(self):
+        TSMock = self.cls_from_ccode(b'void callee(void) { return; }',
+                                     'prev.c')
+        self.extend_by_ccode(TSMock, b'void callee(void); '
+                                     b'void caller(void) { callee(); }',
+                             'refprev.c')
+        TSMock()
+
+    def test_mockFuncWrapper_onRefersToNextTransUnit_isGenerated(self):
+        TSMock = self.cls_from_ccode(b'void callee(void);'
+                                     b'void caller(void) { callee(); }',
+                                     'refnext.c')
+        self.extend_by_ccode(TSMock, b'void callee(void) { return; }',
+                             'next.c')
+        TSMock()
+
+    def test_mockFunc_onLastTransUnitDoesNotReferToMocks_isGenerated(self):
+        TSMock = self.cls_from_ccode(b'void mock(void);'
+                                     b'void func1(void) { mock(); }',
+                                     'first_with_mock.c')
+        self.extend_by_ccode(TSMock, b'void func2(void) { return; }',
+                             'last_with_no_refererence_to_mock.c')
+        TSMock()
+
     def test_typedefWrapper_storesTypeDefInTypedefCls(self):
         TSMock = self.cls_from_ccode(b'typedef int td_t;', 'typedef.c')
         with TSMock() as ts:
