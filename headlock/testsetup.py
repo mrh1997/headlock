@@ -1,4 +1,5 @@
 import ctypes as ct
+import functools
 import os
 import sys
 import weakref
@@ -48,9 +49,35 @@ class CustomTypeContainer:
     pass
 
 
-TransUnit = namedtuple(
-    'TransUnit',
-    'subsys_name abs_src_filename abs_incl_dirs predef_macros')
+@functools.total_ordering
+class TransUnit:
+
+    def __init__(self, subsys_name, abs_src_filename, abs_incl_dirs,
+                 predef_macros):
+        self.subsys_name = subsys_name
+        self.abs_src_filename = abs_src_filename
+        self.abs_incl_dirs = abs_incl_dirs
+        self.predef_macros = predef_macros
+
+    def __repr__(self):
+        return f'{type(self).__name__}({self.subsys_name}, ' \
+               f'{self.abs_src_filename}, {self.abs_incl_dirs}, ' \
+               f'{self.predef_macros})'
+
+    def __iter_attrs(self):
+        yield self.subsys_name
+        yield self.abs_src_filename
+        yield from self.abs_incl_dirs
+        yield from self.predef_macros.items()
+
+    def __hash__(self):
+        return hash(tuple(self.__iter_attrs()))
+
+    def __eq__(self, other):
+        return tuple(self.__iter_attrs()) == tuple(other.__iter_attrs())
+
+    def __lt__(self, other):
+        return tuple(self.__iter_attrs()) < tuple(other.__iter_attrs())
 
 
 class CModuleDecoratorBase:
@@ -70,7 +97,8 @@ class CModuleDecoratorBase:
         return SubCls
 
     @abc.abstractmethod
-    def iter_transunits(self, cls): return iter([])
+    def iter_transunits(self, cls):
+        return iter([])
 
 
 class CModule(CModuleDecoratorBase):
@@ -160,19 +188,30 @@ class TestSetup(BuildInDefs):
 
     __globals = {}
     __implementations = set()
+    __ts_name__ = None
 
     _delayed_exc = None
 
-    __transunits__ = ()
+    __transunits__ = frozenset()
 
     ### provide structs with packing 1
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        cls.__globals = cls.__globals.copy()
-        cls.__implementations = cls.__implementations.copy()
-        cls.struct = copy.copy(cls.struct)
-        cls.enum = copy.copy(cls.enum)
+        bases = list(reversed([base for base in cls.__bases__
+                               if issubclass(base, TestSetup)]))
+        cls.__ts_name__ = None
+        cls.__globals = bases[0].__globals.copy()
+        cls.__implementations = bases[0].__implementations.copy()
+        cls.struct = copy.copy(bases[0].struct)
+        cls.enum = copy.copy(bases[0].enum)
+        cls.__transunits__ = bases[0].__transunits__
+        for base in reversed(bases[1:]):
+            cls.__globals.update(base.__globals)
+            cls.__implementations.update(base.__implementations)
+            cls.struct.__dict__.update(base.struct.__dict__)
+            cls.enum.__dict__.update(base.enum.__dict__)
+            cls.__transunits__ |= base.__transunits__
 
     @classmethod
     def get_ts_abspath(cls):
@@ -194,7 +233,7 @@ class TestSetup(BuildInDefs):
             # this is a dynamicially generated class
             # => require separate directory for every generated variant
             hash = hashlib.md5()
-            for tu in cls.__transunits__:
+            for tu in sorted(cls.__transunits__):
                 hash.update(bytes(tu.abs_src_filename))
                 hash.update(repr(sorted(tu.abs_incl_dirs)).encode('utf8'))
                 hash.update(repr(sorted(tu.predef_macros.items()))
@@ -203,11 +242,10 @@ class TestSetup(BuildInDefs):
 
     @classmethod
     def get_ts_name(cls):
-        if len(cls.__transunits__) == 0:
+        if cls.__ts_name__ is None:
             return cls.__name__
         else:
-            filename = cls.__transunits__[-1].abs_src_filename
-            return filename.stem + '_' + cls.__name__
+            return cls.__ts_name__ + '_' + cls.__name__
 
     @classmethod
     def __extend_by_transunit__(cls, transunit):
@@ -243,7 +281,10 @@ class TestSetup(BuildInDefs):
                 setattr(cls, name, macro_def)
 
         if transunit.abs_src_filename.suffix != '.h':
-            cls.__transunits__ = cls.__transunits__ + (transunit,)
+            cls.__transunits__ |= {transunit}
+
+        if cls.__ts_name__ is None:
+            cls.__ts_name__ = transunit.abs_src_filename.stem
 
     def __init__(self):
         super(TestSetup, self).__init__()
@@ -308,7 +349,7 @@ class TestSetup(BuildInDefs):
                 self.get_build_dir().mkdir(parents=True)
             mock_proxy_path = self.__build_mock_proxy__()
             mock_tu = TransUnit('mocks', mock_proxy_path, [], {})
-            self.__TOOLCHAIN__.build(self.__transunits__ + (mock_tu,),
+            self.__TOOLCHAIN__.build(sorted(self.__transunits__ | {mock_tu}),
                                      self.get_build_dir(),
                                      self.get_ts_name())
 

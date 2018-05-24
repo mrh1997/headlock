@@ -160,7 +160,7 @@ class TestTestSetup(object):
         transunits = [MagicMock(), MagicMock()]
         TSDummy.__extend_by_transunit__(transunits[0])
         TSDummy.__extend_by_transunit__(transunits[1])
-        assert list(TSDummy.__transunits__) == list(transunits)
+        assert TSDummy.__transunits__ == frozenset(transunits)
 
     def test_extendByTransunit_doesNotModifyParentCls(self):
         transunits = [MagicMock(), MagicMock()]
@@ -171,7 +171,7 @@ class TestTestSetup(object):
             pass
         TSChild.__extend_by_transunit__(transunits[1])
         assert list(TSParent.__transunits__) == transunits[:1]
-        assert list(TSChild.__transunits__) == transunits[:2]
+        assert TSChild.__transunits__ == set(transunits[:2])
 
     @pytest.mark.skip
     def test_cMixin_onValidSource_ok(self):
@@ -215,8 +215,8 @@ class TestTestSetup(object):
         assert TSDummy.get_src_dir() == Path(__file__).resolve().parent
 
     class TSEmpty(TestSetup):
-        __transunits__ = [TransUnit('empty', Path(__file__, 'c_files/empty.c'),
-                                    [], {})]
+        __transunits__ = frozenset([
+            TransUnit('empty', Path(__file__, 'c_files/empty.c'), [], {})])
 
     def test_getBuildDir_onStaticTSCls_returnsPathQualName(self):
         this_file = Path(__file__).resolve()
@@ -242,14 +242,14 @@ class TestTestSetup(object):
         TSDummy2 = self.cls_from_ccode(b'', 'test.c', A=1, B=2, C=3)
         assert TSDummy1.get_build_dir() != TSDummy2.get_build_dir()
 
-    def test_getTsName_returnFirstFileNamePlusClassName(self, tmpdir):
+    def test_getTsName_returnFirstExtendedTransUnitFileNamePlusClassName(self, tmpdir):
         build_tree(tmpdir, {'dir': {'src1.c': b'', 'src2.c': b''}})
         class TSClassName(TestSetup): pass
         TSClassName.__extend_by_transunit__(
             TransUnit('', Path(tmpdir.join('dir/src1.c')), [], {}))
         TSClassName.__extend_by_transunit__(
             TransUnit('', Path(tmpdir.join('dir/src2.c')), [], {}))
-        assert TSClassName.get_ts_name() == 'src2_TSClassName'
+        assert TSClassName.get_ts_name() == 'src1_TSClassName'
 
     def test_getTsName_onNoSourceFiles_returnsClassNameOnly(self):
         class TSClassName(TestSetup): pass
@@ -568,3 +568,28 @@ class TestTestSetup(object):
             assert ts.impl_by_subclass_func() == 2
             with pytest.raises(MethodNotMockedError):
                 ts.not_impl_func()
+
+    def test_subclassing_onMultipleInheritance_mergesBaseClsItems(self):
+        TSParent1 = self.cls_from_ccode(b'void func1(void) { return; }\n'
+                                        b'void mock1(void);\n'
+                                        b'struct strct1 {};\n'
+                                        b'enum enm1 { a };\n'
+                                        b'int var1;\n'
+                                        b'#define MACRO1\n',
+                                        'base1.c')
+        TSParent2 = self.cls_from_ccode(b'void func2(void) { return; }\n'
+                                        b'void mock2(void);\n'
+                                        b'struct strct2 {};\n'
+                                        b'enum enm2 { a };\n'
+                                        b'int var2;\n'
+                                        b'#define MACRO2\n',
+                                        'base2.c')
+        class TSMerged(TSParent1, TSParent2):
+            pass
+        with TSMerged() as ts:
+            assert hasattr(ts, 'func1') and hasattr(ts, 'func2')
+            assert hasattr(ts, 'mock1') and hasattr(ts, 'mock2')
+            assert hasattr(ts, 'var1') and hasattr(ts, 'var2')
+            assert hasattr(ts, 'MACRO1') and hasattr(ts, 'MACRO2')
+            assert hasattr(ts.struct, 'strct1') and hasattr(ts.struct, 'strct2')
+            assert hasattr(ts.enum, 'enm1') and hasattr(ts.enum, 'enm2')
