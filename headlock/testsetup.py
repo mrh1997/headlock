@@ -5,7 +5,6 @@ import sys
 import weakref
 import abc
 import hashlib
-from collections import namedtuple
 import copy
 
 from pathlib import Path
@@ -15,7 +14,6 @@ from .c_parser import CParser, ParseError
 
 
 BUILD_CACHE = set()
-DISABLE_AUTOBUILD = False
 
 
 class BuildError(Exception):
@@ -344,14 +342,13 @@ class TestSetup(BuildInDefs):
         return mock_proxy_path
 
     def __build__(self):
-        if not DISABLE_AUTOBUILD:
-            if not self.get_build_dir().exists():
-                self.get_build_dir().mkdir(parents=True)
-            mock_proxy_path = self.__build_mock_proxy__()
-            mock_tu = TransUnit('mocks', mock_proxy_path, [], {})
-            self.__TOOLCHAIN__.build(sorted(self.__transunits__ | {mock_tu}),
-                                     self.get_build_dir(),
-                                     self.get_ts_name())
+        if not self.get_build_dir().exists():
+            self.get_build_dir().mkdir(parents=True)
+        mock_proxy_path = self.__build_mock_proxy__()
+        mock_tu = TransUnit('mocks', mock_proxy_path, [], {})
+        self.__TOOLCHAIN__.build(sorted(self.__transunits__ | {mock_tu}),
+                                 self.get_build_dir(),
+                                 self.get_ts_name())
 
     def __load__(self):
         exepath = self.__TOOLCHAIN__.exe_path(self.get_build_dir(),
