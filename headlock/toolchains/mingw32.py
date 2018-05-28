@@ -11,6 +11,8 @@ from ..testsetup import ToolChainDriver, BuildError
 class MinGW32ToolChain(ToolChainDriver):
 
     CLANG_TARGET = 'i386-pc-mingw32'
+    ADDITIONAL_COMPILE_OPTIONS = []
+    ADDITIONAL_LINK_OPTIONS = []
 
     def __init__(self, architecture=None, version=None, thread_model=None,
                  exception_model=None, rev=None, mingw_install_dir=None):
@@ -91,10 +93,12 @@ class MinGW32ToolChain(ToolChainDriver):
                           + ['-I' + os.fspath(incl_dir)
                              for incl_dir in tu.abs_incl_dirs]
                           + [f'-D{mname}={mval or ""}'
-                             for mname, mval in tu.predef_macros.items()],
+                             for mname, mval in tu.predef_macros.items()]
+                          + self.ADDITIONAL_COMPILE_OPTIONS,
                           obj_file_path)
         exe_file_path = self.exe_path(build_dir, name)
         self._run_gcc([str(build_dir / (tu.abs_src_filename.stem + '.o'))
                        for tu in transunits]
-                      + ['-shared', '-o', os.fspath(exe_file_path)],
+                      + ['-shared', '-o', os.fspath(exe_file_path)]
+                      + self.ADDITIONAL_LINK_OPTIONS,
                       exe_file_path)
