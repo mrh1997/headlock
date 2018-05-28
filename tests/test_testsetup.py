@@ -173,38 +173,11 @@ class TestTestSetup(object):
         assert list(TSParent.__transunits__) == transunits[:1]
         assert TSChild.__transunits__ == set(transunits[:2])
 
-    @pytest.mark.skip
-    def test_cMixin_onValidSource_ok(self):
-        self.c_mixin_from(b'/* valid C source code */', 'comment.c')
-
-    @pytest.mark.skip
-    @pytest.mark.parametrize('exp_exc',
-                             [subprocess.CalledProcessError(1, 'x'),
-                              FileNotFoundError()])
-    def test_cMixin_onFailedCallCMake_raisesBuildErrorDuringInstanciation(self, exp_exc):
-        cls = self.c_mixin_from(b'', 'cmake_err.c')
-        with patch('subprocess.Popen', Mock(side_effect=exp_exc)):
-            with pytest.raises(BuildError):
-                cls()
-
-    @pytest.mark.skip
-    def test_cMixin_onInvalidSourceCode_raisesCompileErrorDuringInstanciation(self):
-        cls = self.c_mixin_from(b'#error p', 'compile_err_mixin.c')
-        try:
-            cls()
-        except CompileError as exc:
-            assert exc.testsetup == cls
-            assert len(exc.errors) == 1
-        else:
-            raise AssertionError('Expected to raise CompileError')
-
-    @pytest.mark.skip
-    def test_cMixin_onNotDelayedErrorReporting_raisesCompileErrorDuringClassCreation(self):
-        class TSDelayErrors(TestSetup):
-            DELAYED_PARSEERROR_REPORTING = False
-        with pytest.raises(CompileError):
-            self.c_mixin_from(b'#error p',
-                              'compile_err_mixin_nodelay.c', base=TSDelayErrors)
+    def test_extendByTransunit_onInvalidSourceCode_raisesCompileErrorDuringParsing(self):
+        with pytest.raises(CompileError) as comp_err:
+            self.cls_from_ccode(b'#error invalid c src', 'compile_err.c')
+        assert len(comp_err.value.errors) == 1
+        assert comp_err.value.path.name == 'compile_err.c'
 
     def test_getTsAbspath_returnsAbsPathOfFile(self):
         TSDummy = self.cls_from_ccode(b'', 'test.c')
@@ -273,6 +246,9 @@ class TestTestSetup(object):
             assert ts.A is None
             assert ts.B == 1
             assert ts.C is None
+
+    def test_init_onValidSource_ok(self):
+        self.cls_from_ccode(b'/* valid C source code */', 'comment_only.c')
 
     @patch('headlock.testsetup.TestSetup.__startup__')
     def test_init_providesBuildAndLoadedButNotStartedDll(self, __startup__):
@@ -482,17 +458,6 @@ class TestTestSetup(object):
         with TSDummy() as ts:
             assert ts.a.val == 1
             assert ts.b.val == 2
-
-    @pytest.mark.skip
-    def test_onCompilationError_raisesBuildError(self):
-        TS = self.cls_from_ccode(b'void func(void) {undefined_FUNC();}',
-                                 'undefined_symbol.c')
-        try:
-            TS()
-        except BuildError as e:
-            assert 'undefined_FUNC' in str(e)
-        else:
-            raise AssertionError()
 
     def test_registerUnloadEvent_onRegisteredEvent_isCalledOnUnload(self):
         TSDummy = self.cls_from_ccode(b'', 'test1.c')

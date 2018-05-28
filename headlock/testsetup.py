@@ -177,7 +177,6 @@ class TestSetup(BuildInDefs):
     enum = CustomTypeContainer()
 
     _BUILD_DIR_ = '.headlock'
-    DELAYED_PARSEERROR_REPORTING = True
 
     __test__ = False   # avoid that pytest/nose/... collect this as test
 
@@ -257,11 +256,8 @@ class TestSetup(BuildInDefs):
         try:
             parser.read(str(transunit.abs_src_filename))
         except ParseError as exc:
-            exc = CompileError(exc.errors, cls)
-            if cls.DELAYED_PARSEERROR_REPORTING:
-                cls._delayed_exc = exc
-            else:
-                raise exc
+            exc = CompileError(exc.errors, transunit.abs_src_filename)
+            raise exc
         else:
             cls.__globals.update(parser.funcs)
             cls.__globals.update(parser.vars)
