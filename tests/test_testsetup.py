@@ -1,8 +1,9 @@
 import contextlib
+import sys
+import os
 from pathlib import Path
-import pytest
-import subprocess
 from unittest.mock import patch, Mock, MagicMock, call
+import pytest
 
 from .helpers import build_tree
 from headlock.testsetup import TestSetup, MethodNotMockedError, \
@@ -20,11 +21,11 @@ def sim_tsdummy_tree(base_dir, tree):
     structure below this directory.
     """
     global __file__
-    build_tree(base_dir, tree)
+    base_path = build_tree(base_dir, tree)
     saved_file = __file__
     __file__ = str(base_dir.join('test_testsetup.py'))
     try:
-        yield
+        yield base_path
     finally:
         __file__ = saved_file
 
@@ -82,14 +83,14 @@ class TestCModuleDecoratorBase:
 class TestCModule:
 
     def test_iterTransunits_onRelSrcFilename_resolves(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'dir': {'src': b''}}):
+        with sim_tsdummy_tree(tmpdir, {'dir': {'src': b''}}) as base_dir:
             c_mod = CModule('dir/src')
             [transunit] = c_mod.iter_transunits(TSDummy)
-            assert transunit.abs_src_filename == Path(tmpdir.join('dir/src'))
+            assert transunit.abs_src_filename == base_dir / 'dir/src'
 
     def test_iterTransunits_onAbsSrcFilename_resolves(self, tmpdir):
-        build_tree(tmpdir, {'dir': {'src': b''}})
-        abs_path = str(tmpdir.join('dir/src'))
+        base_dir = build_tree(tmpdir, {'dir': {'src': b''}})
+        abs_path = str(base_dir /  'dir/src')
         c_mod = CModule(abs_path)
         [transunit] = c_mod.iter_transunits(TSDummy)
         assert transunit.abs_src_filename == Path(abs_path)
@@ -105,18 +106,18 @@ class TestCModule:
                    == 't1.TSSubClass.TestCModule.test_testsetup'
 
     def test_iterTransunits_retrievesAndResolvesIncludeDirs(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'src': b'', 'd1': {}, 'd2': {}}):
+        with sim_tsdummy_tree(tmpdir, {'src': b'', 'd1': {}, 'd2': {}}) \
+                as base_dir:
             c_mod = CModule('src', 'd1', 'd2')
             [transunit] = c_mod.iter_transunits(TSDummy)
-            assert transunit.abs_incl_dirs == [Path(tmpdir.join('d1')),
-                                               Path(tmpdir.join('d2'))]
+            assert transunit.abs_incl_dirs == [base_dir / 'd1', base_dir / 'd2']
 
     def test_iterTransunits_createsOneUnitTestPerSrcFilename(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'t1.c': b'', 't2.c': b''}):
+        with sim_tsdummy_tree(tmpdir, {'t1.c': b'', 't2.c': b''}) as base_dir:
             c_mod = CModule('t1.c', 't2.c')
             assert [tu.abs_src_filename
                     for tu in c_mod.iter_transunits(TSDummy)] \
-                    == [Path(tmpdir.join('t1.c')), Path(tmpdir.join('t2.c'))]
+                    == [base_dir / 't1.c', base_dir / 't2.c']
 
     def test_iterTransunits_onPredefMacros_passesMacrosToCompParams(self, tmpdir):
         with sim_tsdummy_tree(tmpdir, {'src': b''}):
@@ -125,16 +126,23 @@ class TestCModule:
             assert transunit.predef_macros == {'MACRO1':11, 'MACRO2':22}
 
     def test_iterTransunits_onIncludeDirectories_resolvesDirs(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'src': {'main.c': b''}, 'inc': {}}):
+        with sim_tsdummy_tree(tmpdir, {'src': {'main.c': b''}, 'inc': {}}) \
+                as base_dir:
             c_mod = CModule('src\main.c', 'inc')
             [transunit] = c_mod.iter_transunits(TSDummy)
-            assert transunit.abs_incl_dirs == [Path(tmpdir.join('inc'))]
+            assert transunit.abs_incl_dirs == [base_dir / 'inc']
 
     def test_iterTransunits_onInvalidPath_raiseIOError(self):
         c_mod = CModule('test_invalid.c')
         with pytest.raises(IOError):
             list(c_mod.iter_transunits(TSDummy))
 
+    def test_resolvePath_onRelativeFileAndRelativeModulePath_returnsAbsolutePath(self, tmpdir):
+        module = sys.modules[TSDummy.__module__]
+        with build_tree(tmpdir, {'file.py': b'', 'file.c': b''}) as dir:
+            os.chdir(dir)
+            with patch.object(module, '__file__', 'file.py'):
+                assert CModule.resolve_path('file.c', TSDummy) == dir / 'file.c'
 
 class TestTestSetup(object):
 

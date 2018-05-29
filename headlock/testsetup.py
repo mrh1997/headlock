@@ -132,9 +132,10 @@ class CModule(CModuleDecoratorBase):
                             abs_incl_dirs,
                             self.predef_macros)
 
-    def resolve_path(self, filename, cls):
+    @staticmethod
+    def resolve_path(filename, cls):
         mod = sys.modules[cls.__module__]
-        return Path(mod.__file__).parent / filename
+        return (Path(mod.__file__).parent / filename).resolve()
 
 
 class ToolChainDriver:
