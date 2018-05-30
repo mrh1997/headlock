@@ -13,9 +13,6 @@ from .c_data_model import BuildInDefs, CStruct, CEnum, CFunc
 from .c_parser import CParser, ParseError
 
 
-BUILD_CACHE = set()
-
-
 class BuildError(Exception):
 
     def __init__(self, msg, path=None):
@@ -288,9 +285,7 @@ class TestSetup(BuildInDefs):
         self.__dll = None
         if self._delayed_exc:
             raise self._delayed_exc
-        if type(self) not in BUILD_CACHE:
-            self.__build__()
-            BUILD_CACHE.add(type(self))
+        self.__build__()
         self.__load__()
 
     @classmethod

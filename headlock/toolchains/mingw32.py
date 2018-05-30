@@ -8,6 +8,9 @@ import fnmatch
 from ..testsetup import ToolChainDriver, BuildError
 
 
+BUILD_CACHE = set()
+
+
 class MinGW32ToolChain(ToolChainDriver):
 
     CLANG_TARGET = 'i386-pc-mingw32'
@@ -86,6 +89,8 @@ class MinGW32ToolChain(ToolChainDriver):
         return build_dir / f'{name}.dll'
 
     def build(self, transunits, build_dir, name):
+        if (tuple(transunits), build_dir) in BUILD_CACHE:
+            return
         for tu in transunits:
             obj_file_path = build_dir / (tu.abs_src_filename.stem + '.o')
             self._run_gcc(['-c', os.fspath(tu.abs_src_filename)]
@@ -102,3 +107,4 @@ class MinGW32ToolChain(ToolChainDriver):
                       + ['-shared', '-o', os.fspath(exe_file_path)]
                       + self.ADDITIONAL_LINK_OPTIONS,
                       exe_file_path)
+        BUILD_CACHE.add((tuple(transunits), build_dir))
