@@ -106,11 +106,6 @@ class CModule(CModuleDecoratorBase):
         self.src_filenames = list(map(Path, src_filenames))
         self.predef_macros = predef_macros
 
-    def get_fqn(self, cls):
-        rev_qualname = '.'.join(reversed(cls.__qualname__.split('.')))
-        *_, modname = cls.__module__.split('.')
-        return f'{self.src_filenames[0].stem}.{rev_qualname}.{modname}'
-
     def iter_transunits(self, cls):
         abs_src_filenames = []
         abs_incl_dirs = []
@@ -124,7 +119,7 @@ class CModule(CModuleDecoratorBase):
                 raise IOError('Cannot find C-File / Include-Dir path {}'
                               .format(item_path))
         for abs_src_filename in abs_src_filenames:
-            yield TransUnit(self.get_fqn(cls),
+            yield TransUnit(self.src_filenames[0].stem,
                             abs_src_filename,
                             abs_incl_dirs,
                             self.predef_macros)
@@ -219,11 +214,16 @@ class TestSetup(BuildInDefs):
 
     @classmethod
     def get_build_dir(cls):
+        return cls.get_src_dir() / cls._BUILD_DIR_ / cls.get_ts_abspath().stem \
+               / cls.get_ts_name()
+
+    @classmethod
+    def get_ts_name(cls):
         static_qualname = cls.__qualname__.replace('.<locals>.', '.')
-        static_dir = cls.get_src_dir() / cls._BUILD_DIR_ \
-                     / cls.get_ts_abspath().stem / static_qualname
-        if cls.__qualname__ == static_qualname:
-            return static_dir
+        shortend_name_parts = [nm[:32] for nm in static_qualname.split('.')]
+        rev_static_qualname = '.'.join(reversed(shortend_name_parts))
+        if '.<locals>.' not in cls.__qualname__:
+            return rev_static_qualname
         else:
             # this is a dynamicially generated class
             # => require separate directory for every generated variant
@@ -233,14 +233,7 @@ class TestSetup(BuildInDefs):
                 hash.update(repr(sorted(tu.abs_incl_dirs)).encode('utf8'))
                 hash.update(repr(sorted(tu.predef_macros.items()))
                             .encode('utf8'))
-            return Path(str(static_dir) + '_' + hash.hexdigest())
-
-    @classmethod
-    def get_ts_name(cls):
-        if cls.__ts_name__ is None:
-            return cls.__name__
-        else:
-            return cls.__ts_name__ + '_' + cls.__name__
+            return rev_static_qualname + '_' + hash.hexdigest()[:8]
 
     @classmethod
     def __extend_by_transunit__(cls, transunit):
@@ -327,7 +320,7 @@ class TestSetup(BuildInDefs):
                     yield f'(* {mock_name}_mock)({params});\n'
                     yield '}\n'
 
-        mock_proxy_path = self.get_build_dir() / f'{self.get_ts_name()}_mocks.c'
+        mock_proxy_path = self.get_build_dir() / f'__headlock_mocks__.c'
         mock_proxy_ccode = ''.join(mock_proxy_generator())
         mock_proxy_path.write_text(mock_proxy_ccode)
 

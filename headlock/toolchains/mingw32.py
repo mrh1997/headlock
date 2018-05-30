@@ -86,7 +86,7 @@ class MinGW32ToolChain(ToolChainDriver):
                 raise BuildError(completed_proc.stderr, dest_file)
 
     def exe_path(self, build_dir, name):
-        return build_dir / f'{name}.dll'
+        return build_dir / '__headlock__.dll'
 
     def build(self, transunits, build_dir, name):
         if (tuple(transunits), build_dir) in BUILD_CACHE:

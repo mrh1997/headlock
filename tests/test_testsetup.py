@@ -102,8 +102,7 @@ class TestCModule:
         with sim_tsdummy_tree(tmpdir, {'t1.c': b'', 't2.c': b''}):
             c_mod = CModule('t1.c', 't2.c')
             [transunit, *_] = c_mod.iter_transunits(self.TSSubClass)
-            assert transunit.subsys_name \
-                   == 't1.TSSubClass.TestCModule.test_testsetup'
+            assert transunit.subsys_name == 't1'
 
     def test_iterTransunits_retrievesAndResolvesIncludeDirs(self, tmpdir):
         with sim_tsdummy_tree(tmpdir, {'src': b'', 'd1': {}, 'd2': {}}) \
@@ -199,42 +198,30 @@ class TestTestSetup(object):
         __transunits__ = frozenset([
             TransUnit('empty', Path(__file__, 'c_files/empty.c'), [], {})])
 
-    def test_getBuildDir_onStaticTSCls_returnsPathQualName(self):
-        this_file = Path(__file__).resolve()
-        assert self.TSEmpty.get_build_dir() \
-               == this_file.parent / TestSetup._BUILD_DIR_ / 'test_testsetup' \
-                  / 'TestTestSetup.TSEmpty'
+    def test_getTsName_onStaticTSCls_returnsReversedQualifiedClassName(self):
+        assert self.TSEmpty.get_ts_name() == 'TSEmpty.TestTestSetup'
 
-    def test_getBuildDir_onDynamicGeneratedTSCls_returnsPathWithQualNameAndUid(self):
-        this_file = Path(__file__).resolve()
+    def test_getTsName_onDynamicGeneratedTSCls_returnsReversedQualifiedClassNameAndUid(self):
         TSDummy = self.cls_from_ccode(b'', 'test.c')
-        assert Path(str(TSDummy.get_build_dir())[:-32]) \
-               == this_file.parent / TestSetup._BUILD_DIR_ / 'test_testsetup' \
-                  / 'TestTestSetup.cls_from_ccode.TSDummy_'
-        int(str(TSDummy.get_build_dir())[-32:], 16) #expect hexnumber at the end
+        assert TSDummy.get_ts_name()[:-8] \
+               == 'TSDummy.cls_from_ccode.TestTestSetup_'
+        int(str(TSDummy.get_ts_name())[-8:], 16)  # expect hexnumber at the end
 
-    def test_getBuildDir_onDynamicGeneratedTSClsWithSameParams_returnsSameDir(self):
-        TSDummy1 = self.cls_from_ccode(b'', 'test.c')
-        TSDummy2 = self.cls_from_ccode(b'', 'test.c')
-        assert TSDummy1.get_build_dir() == TSDummy2.get_build_dir()
+    def test_getTsName_onDynamicGeneratedTSClsWithSameParams_returnsSameStr(self):
+        TSDummy1 = self.cls_from_ccode(b'', 'test.c', MACRO=1)
+        TSDummy2 = self.cls_from_ccode(b'', 'test.c', MACRO=1)
+        assert TSDummy1.get_ts_name() == TSDummy2.get_ts_name()
 
-    def test_getBuildDir_onDynamicGeneratedTSClsWithDifferentParams_returnsDifferentDir(self):
+    def test_getTsName_onDynamicGeneratedTSClsWithDifferentParams_returnsDifferentStr(self):
         TSDummy1 = self.cls_from_ccode(b'', 'test.c', A=1, B=222, C=3)
         TSDummy2 = self.cls_from_ccode(b'', 'test.c', A=1, B=2, C=3)
-        assert TSDummy1.get_build_dir() != TSDummy2.get_build_dir()
+        assert TSDummy1.get_ts_name() != TSDummy2.get_ts_name()
 
-    def test_getTsName_returnFirstExtendedTransUnitFileNamePlusClassName(self, tmpdir):
-        build_tree(tmpdir, {'dir': {'src1.c': b'', 'src2.c': b''}})
-        class TSClassName(TestSetup): pass
-        TSClassName.__extend_by_transunit__(
-            TransUnit('', Path(tmpdir.join('dir/src1.c')), [], {}))
-        TSClassName.__extend_by_transunit__(
-            TransUnit('', Path(tmpdir.join('dir/src2.c')), [], {}))
-        assert TSClassName.get_ts_name() == 'src1_TSClassName'
-
-    def test_getTsName_onNoSourceFiles_returnsClassNameOnly(self):
-        class TSClassName(TestSetup): pass
-        assert TSClassName.get_ts_name() == 'TSClassName'
+    def test_getBuildDir_returnsCorrectPath(self, ts_dummy):
+        this_file = Path(__file__).resolve()
+        assert ts_dummy.get_build_dir() \
+               == this_file.parent / TestSetup._BUILD_DIR_ / this_file.stem \
+                  / ts_dummy.get_ts_name()
 
     def test_macroWrapper_ok(self):
         TS = self.cls_from_ccode(b'#define MACRONAME   123', 'macro.c')
