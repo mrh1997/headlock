@@ -7,74 +7,112 @@ import headlock.c_data_model
 
 class TestCRawAccess:
 
-    @pytest.fixture
-    def c_obj(self):
-        return (ct.c_ubyte * 4)(0x12, 0x34, 0x56, 0x78)
-
-    @pytest.fixture
-    def raw_access(self, c_obj):
-        return headlock.c_data_model.CRawAccess(c_obj)
-
-    def test_init_setsAttributes(self, c_obj, raw_access):
-        assert raw_access.ctypes_obj is c_obj
+    def test_init_onAddressOnly_setsAttributes(self):
+        raw_access = headlock.c_data_model.CRawAccess(0x1234)
+        assert raw_access.addr == 0x1234
         assert not raw_access.readonly
+        assert raw_access.max_size is None
 
-    def test_init_onReadOnly_setsReadOnlyAttribute(self, c_obj):
-        ro_raw_access = headlock.c_data_model.CRawAccess(c_obj, readonly=True)
-        assert ro_raw_access.readonly
+    def test_init_onMaxSizeAndReadOnly_setsAttributes(self):
+        raw_access = headlock.c_data_model.CRawAccess(0, 1234, readonly=True)
+        assert raw_access.max_size == 1234
+        assert raw_access.readonly
 
-    def test_len_ok(self, raw_access):
-        assert len(raw_access) == 4
+    @pytest.fixture
+    def testdata(self):
+        return b'\x12\x34\x56\x78'
 
-    def test_getItem_onIndex_returnsIntAtIndex(self, raw_access):
-        assert raw_access[1] == 0x34
+    @pytest.fixture
+    def ct_obj(self, testdata):
+        return (ct.c_ubyte * len(testdata))(*testdata)
 
-    def test_getItem_onSlice_returnsBytes(self, raw_access):
-        assert raw_access[1:3] == b'\x34\x56'
+    @pytest.fixture
+    def raw_access(self, ct_obj, testdata):
+        return headlock.c_data_model.CRawAccess(ct.addressof(ct_obj),
+                                                len(testdata))
 
-    def test_setItem_onIndex_setsInteger(self, raw_access, c_obj):
+    @pytest.mark.parametrize('test_ndx', [0, 1, 3])
+    def test_getItem_onIndex_returnsIntAtIndex(self, raw_access, testdata, test_ndx):
+        assert raw_access[test_ndx] == testdata[test_ndx]
+
+    @pytest.mark.parametrize('test_slice', [slice(2),    slice(1, 3),
+                                            slice(2, 4), slice(0, 4, 2)])
+    def test_getItem_onSlice_returnsBytes(self, raw_access, testdata, test_slice):
+        assert raw_access[test_slice] == testdata[test_slice]
+
+    @pytest.mark.parametrize('invalid_index', (-1, 4))
+    def test_getItem_onInvalidIndex_raisesIndexError(self, raw_access, invalid_index):
+        with pytest.raises(IndexError):
+            _ = raw_access[invalid_index]
+
+    @pytest.mark.parametrize('invalid_slice', [
+        slice(-1, 4, None),   slice(1, -1, None), slice(1, 4, -1),  # negative
+        slice(1, None, None),                                       # None
+        slice(1, 5, None)])                                         # too big
+    def test_getItem_onInvalidSlice_raisesIndexError(self, raw_access, invalid_slice):
+        with pytest.raises(IndexError):
+            _ = raw_access[invalid_slice]
+
+    def test_setItem_onIndex_setsInteger(self, raw_access, ct_obj):
         raw_access[2] = 0x99
-        assert c_obj[0:4] == [0x12, 0x34, 0x99, 0x78]
+        assert ct_obj[0:4] == [0x12, 0x34, 0x99, 0x78]
 
-    def test_setItem_onReadOnly_raisesWriteProtectError(self, c_obj):
-        ro_raw_access = headlock.c_data_model.CRawAccess(c_obj, readonly=True)
+    def test_setItem_onSlice_setsByteLike(self, raw_access, ct_obj):
+        raw_access[1:3] = b'\x88\x99'
+        assert ct_obj[:4] == [0x12, 0x88, 0x99, 0x78]
+
+    def test_setItem_onReadOnly_raisesWriteProtectError(self, ct_obj):
+        ro_raw_access = headlock.c_data_model.CRawAccess(ct_obj, readonly=True)
         with pytest.raises(headlock.c_data_model.WriteProtectError):
             ro_raw_access[2] = 0x99
 
-    @pytest.mark.parametrize('slice, set_val', [
-        (slice(1, 3), b'\x88\x99'),
-        (slice(3), b'\x12\x88\x99'),
-        (slice(1, None), b'\x88\x99\x78'),
-        (slice(-3, -1), b'\x88\x99')])
-    def test_setItem_onSlice_setsByteLike(self, raw_access, c_obj, slice, set_val):
-        raw_access[slice] = set_val
-        assert c_obj[0:4] == [0x12, 0x88, 0x99, 0x78]
+    def test_setItem_onInvalidIndex_raisesIndexError(self, raw_access):
+        with pytest.raises(IndexError):
+            raw_access[-1] = 1
+
+    def test_repr_ok(self):
+        raw_access = headlock.c_data_model.CRawAccess(0x1234, 10, readonly=True)
+        assert repr(raw_access) == "CRawAccess(0x1234, 10, readonly=True)"
 
     def test_iter_ok(self, raw_access):
-        assert list(iter(raw_access)) == [0x12, 0x34, 0x56, 0x78]
+        raw_access.max_size = None
+        raw_iter = iter(raw_access)
+        assert [next(raw_iter) for c in range(4)] == [0x12, 0x34, 0x56, 0x78]
 
-    def test_asBytes_ok(self, raw_access):
-        assert bytes(raw_access) == b'\x12\x34\x56\x78'
+    def test_iter_onExceedMaxSize_raisesIndexError(self, raw_access):
+        raw_iter = iter(raw_access)
+        for c in range(4): next(raw_iter)
+        with pytest.raises(IndexError):
+            next(raw_iter)
 
-    def test_asBytesLike(self, raw_access):
-        assert raw_access.hex() == '12345678'
-
-    def test_add_onBytesLike_returnsConcatenatedBytes(self, raw_access):
-        assert raw_access + b'\x9A\xBC' == b'\x12\x34\x56\x78\x9A\xBC'
-
-    def test_radd_onBytesLike_returnsConcatenatedBytes(self, raw_access):
-        assert b'\x9A\xBC' + raw_access == b'\x9A\xBC\x12\x34\x56\x78'
-
-    def test_rmul_onInt_returnsCopiedBytes(self, raw_access):
-        assert raw_access * 3 == b'\x12\x34\x56\x78' * 3
-
-    def test_repr_ok(self, raw_access):
-        assert repr(raw_access) == "CRawAccess('12 34 56 78')"
-
-    def test_eqNe_ok(self, raw_access):
+    def test_eq_onIdenticalStr_returnsTrue(self, raw_access):
         assert raw_access == b'\x12\x34\x56\x78'
-        assert raw_access != b'\x99\x99\x99\x99'
-        assert raw_access != b'\x12\x34\x56'
+
+    def test_eq_onShorterStringButIdenticalBytesAtBegin_returnsTrue(self, raw_access):
+        assert raw_access == b'\x12\x34\x56'
+
+    def test_eq_onUnequalString_returnsFalse(self, raw_access):
+        assert not raw_access == b'\x12\x34\x56\x99'
+
+    def test_ne_ok(self, raw_access):
+        assert raw_access != b'\x12\x34\x56\x99'
+        assert not raw_access != b'\x12\x34\x56\x78'
+
+    def test_lt_ok(self, raw_access):
+        assert raw_access < b'\x12\x34\x56\x79'
+        assert not raw_access < b'\x12\x34\x56\x78'
+
+    def test_gt_ok(self, raw_access):
+        assert raw_access > b'\x12\x34\x56\x77'
+        assert not raw_access > b'\x12\x34\x56\x78'
+
+    def test_le_ok(self, raw_access):
+        assert raw_access <= b'\x12\x34\x56\x78'
+        assert not raw_access <= b'\x12\x34\x56\x77'
+
+    def test_ge_ok(self, raw_access):
+        assert raw_access >= b'\x12\x34\x56\x78'
+        assert not raw_access >= b'\x12\x34\x56\x79'
 
 
 class DummyInt(headlock.c_data_model.CInt):
@@ -327,8 +365,8 @@ class TestCInt:
         int_obj = DummyInt(0x120084)
         raw_access = int_obj.raw
         assert isinstance(raw_access, headlock.c_data_model.CRawAccess)
-        assert ct.addressof(raw_access.ctypes_obj) \
-               == ct.addressof(int_obj.ctypes_obj)
+        assert raw_access.addr == ct.addressof(int_obj.ctypes_obj)
+        assert raw_access.max_size is None
         assert not raw_access.readonly
 
     def test_getRaw_onConstObj_returnsReadonlyRawData(self):
@@ -344,11 +382,6 @@ class TestCInt:
         int_obj = DummyInt()
         int_obj.raw = b'\x11'
         assert int_obj.val == 0x00000011
-
-    def test_setRaw_onValueGreaterThanCObj_ok(self):
-        int_obj = DummyInt.array(2)()
-        int_obj.raw = b'\x11\x22\x33\x44\x55'
-        assert int_obj.val == [0x44332211, 0x00000055]
 
     def test_setRaw_onConst_raiseReadOnlyError(self):
         int_obj = DummyInt.with_attr('const')(2)
@@ -1347,6 +1380,11 @@ class TestCVoid:
     def test_cDefintion_onConstAttr_returnsConstAttr(self):
         const_void = headlock.c_data_model.CVoid.with_attr('const')
         assert const_void.c_definition() == 'const void'
+
+    def test_getRaw_returnsCRawAccessWithMaxSizeNone(self):
+        int = DummyInt()
+        void_ptr = headlock.c_data_model.CVoid.ptr(int.ptr.val)
+        assert void_ptr.ref.raw.max_size is None
 
 
 class TestBuildInDefs:

@@ -78,73 +78,85 @@ class CObjType(type):
 
 
 class CRawAccess:
-    """
-    This class is *not* derived from collections.abc.Sequence as it is not
-    cmpletely compatible as __getitem__ works also on greater addresses
-    """
 
-    def __init__(self, ctypes_obj, readonly=False):
+    def __init__(self, addr, max_size=None, readonly=False):
         super().__init__()
-        self.ctypes_obj = ctypes_obj
+        self.addr = addr
+        self.max_size = max_size
         self.readonly = readonly
 
-    def __len__(self):
-        x = ct.sizeof(self.ctypes_obj)
-        return x
+    @property
+    def _ctypes_obj(self):
+        ptr = ct.POINTER(ct.c_ubyte)()
+        ptr_ptr = ct.cast(ct.pointer(ptr), ct.POINTER(ct.c_uint))
+        ptr_ptr.contents.value = self.addr
+        return ptr
+
+    def __check_ndx(self, ndx):
+        if isinstance(ndx, slice):
+            if ndx.stop is None:
+                raise IndexError(f'End of slice has to be defined ({ndx})')
+            if (ndx.start or 0) < 0 or ndx.stop < 0 or (ndx.step or 1) < 0:
+                raise IndexError(f'Negative values are not supported in '
+                                 f'slices ({ndx})')
+            if self.max_size is not None and ndx.stop > self.max_size:
+                raise IndexError(f'End of slice ({ndx.stop}) '
+                                 f'exceeds max_size ({self.max_size})')
+        else:
+            if ndx < 0:
+                raise IndexError(f'Negative Indices are not supported ({ndx})')
+            if self.max_size is not None and ndx >= self.max_size:
+                raise IndexError(f'Index ({ndx}) '
+                                 f'exceeds max_size ({self.max_size})')
 
     def __getitem__(self, ndx):
-        ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_ubyte))
+        self.__check_ndx(ndx)
+        result = self._ctypes_obj[ndx]
         if isinstance(ndx, slice):
-            return bytes(ptr[ndx])
+            return bytes(result)
         else:
-            return ptr[ndx]
+            return result
 
     def __setitem__(self, ndx, value):
         if self.readonly:
             raise WriteProtectError()
-        ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_ubyte))
-        if not isinstance(ndx, slice):
-            ptr[ndx] = value
+        self.__check_ndx(ndx)
+        if isinstance(ndx, slice):
+            ctypes_obj = self._ctypes_obj
+            indeces = range(ndx.start or 0, ndx.stop, ndx.step or 1)
+            for n, v in zip(indeces, value):
+                ctypes_obj[n] = v
         else:
-            assert ndx.step is None
-            start = ndx.start or 0
-            if start < 0:
-                start += ct.sizeof(self.ctypes_obj)
-            stop = ndx.stop or ct.sizeof(self.ctypes_obj)
-            if stop < 0:
-                stop += ct.sizeof(self.ctypes_obj)
-            slice_range = range(start, stop)
-            for rel_ndx, abs_ndx in enumerate(slice_range):
-                ptr[abs_ndx] = value[rel_ndx]
+            self._ctypes_obj[ndx] = value
 
     def __iter__(self):
-        ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_ubyte))
-        return (ptr[ndx] for ndx in range(ct.sizeof(self.ctypes_obj)))
-
-    def __bytes__(self):
-        return bytes(memoryview(self.ctypes_obj))
+        return map(self.__getitem__, itertools.count(0))
 
     def __repr__(self):
-        bytes_as_hex = ' '.join(format(b, '02X') for b in self)
-        return f"{type(self).__name__}('{bytes_as_hex}')"
+        result = f"{type(self).__name__}({hex(self.addr)}"
+        if self.max_size is not None:
+            result += f', {self.max_size}'
+        if self.readonly:
+            result += f', readonly=True'
+        return result + ')'
 
     def __eq__(self, other):
-        return bytes(self) == other
+        return self[:len(other)] == other
 
     def __ne__(self, other):
-        return bytes(self) != other
+        return self[:len(other)] != other
 
-    def __add__(self, other):
-        return bytes(self) + other
+    def __gt__(self, other):
+        return self[:len(other)] > other
 
-    def __radd__(self, other):
-        return other + bytes(self)
+    def __lt__(self, other):
+        return self[:len(other)] < other
 
-    def __mul__(self, other):
-        return bytes(self) * other
+    def __ge__(self, other):
+        return self[:len(other)] >= other
 
-    def hex(self):
-        return bytes(self).hex()
+    def __le__(self, other):
+        return self[:len(other)] <= other
 
 
 class CObj(metaclass=CObjType):
@@ -311,7 +323,8 @@ class CObj(metaclass=CObjType):
 
     @property
     def raw(self):
-        return CRawAccess(self.ctypes_obj, readonly=self.has_attr('const'))
+        readonly=self.has_attr('const')
+        return CRawAccess(ct.addressof(self.ctypes_obj), None, readonly)
 
     @raw.setter
     def raw(self, new_val):
