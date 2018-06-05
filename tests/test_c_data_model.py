@@ -1355,15 +1355,15 @@ class TestBuildInDefs:
     def build_in_defs(self):
         return headlock.c_data_model.BuildInDefs()
 
-    def test_malloc_onInt_returnsPtrToBufOfSpecifiedSize(self, build_in_defs):
-        memory = build_in_defs.malloc(100)
+    def test_mem_onInt_returnsPtrToBufOfSpecifiedSize(self, build_in_defs):
+        memory = build_in_defs.__mem__(100)
         assert type(memory) == build_in_defs.void.ptr
         assert memory.ref.raw[:100] == bytes.fromhex("00" * 100)
 
-    def test_malloc_onBytes_returnsPtrToBufWithSpecifiedZeroTerminatedStr(self, build_in_defs):
-        memory = build_in_defs.malloc(b"Test")
+    def test_mem_onBytes_returnsPtrToBufWithSpecifiedZeroTerminatedStr(self, build_in_defs):
+        memory = build_in_defs.__mem__(b"Test")
         assert memory.ref.raw[:5] == b"Test\0"
 
-    def test_malloc_returnCObjWithDependsOn(self, build_in_defs):
-        memory = build_in_defs.malloc(1)
+    def test_mem_returnCObjWithDependsOn(self, build_in_defs):
+        memory = build_in_defs.__mem__(1)
         assert memory._depends_on_ is not None

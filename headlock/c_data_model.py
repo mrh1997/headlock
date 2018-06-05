@@ -1158,7 +1158,7 @@ class BuildInDefs:
 
     NULL = void.ptr(0)
 
-    def malloc(self, init, *args):
+    def __mem__(self, init, *args):
         mem = ct.create_string_buffer(bytes(init), *args)
         return self.void.ptr(ct.pointer(mem), _depends_on_=mem)
 

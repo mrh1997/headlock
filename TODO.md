@@ -33,7 +33,7 @@ Small (can be done by occassion)
 * Plugin callbacks sollen von CustomPattern gemockt werden können
    + Plugins callbacks sollen weggelassen werden können
      (und müssen dann von CustomPattern gemockt werden)
-* introduce shortcut for ts.malloc(b'1234') => b'1234'
+* introduce shortcut for ts.__mem__(b'1234') => b'1234'
 * autofind LLVM path (its hardcoded now)
 * set CMAKE_RUNTIME_OUTPUT_DIRECTORY in CMakefile
   (and check if CLion takes it over; see https://blog.jetbrains.com/clion/2014/09/clion-answers-frequently-asked-questions/)
