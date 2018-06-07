@@ -77,7 +77,7 @@ class CObjType(type):
                      'c_name': parent.c_name or parent.__name__})
 
 
-class CRawAccess:
+class CMemory:
 
     def __init__(self, addr, max_size=None, readonly=False):
         super().__init__()
@@ -249,7 +249,7 @@ class CObj(metaclass=CObjType):
             self.val = pyobj.val
         else:
             try:
-                self.raw = pyobj
+                self.mem = pyobj
             except TypeError:
                 raise ValueError(f'{pyobj!r} cannot be converted to {self!r}')
 
@@ -322,12 +322,12 @@ class CObj(metaclass=CObjType):
         return other is cls
 
     @property
-    def raw(self):
+    def mem(self):
         readonly=self.has_attr('const')
-        return CRawAccess(ct.addressof(self.ctypes_obj), None, readonly)
+        return CMemory(ct.addressof(self.ctypes_obj), None, readonly)
 
-    @raw.setter
-    def raw(self, new_val):
+    @mem.setter
+    def mem(self, new_val):
         if self.has_attr('const'):
             raise WriteProtectError()
         ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_ubyte))
@@ -468,7 +468,7 @@ class CPointer(CObj):
                 self[pos].val = ord(val)
         elif isinstance(pyobj, collections.Iterable) \
             and not isinstance(pyobj, (CObj,
-                                       CRawAccess,
+                                       CMemory,
                                        collections.abc.ByteString,
                                        memoryview)):
             lst = list(pyobj)
@@ -766,7 +766,7 @@ class CStruct(CObj):
 
     def _set_val(self, new_val):
         try:
-            self.raw = memoryview(new_val)
+            self.mem = memoryview(new_val)
         except TypeError:
             if isinstance(new_val, collections.Sequence):
                 new_val = dict(zip(self._members_order_, new_val))

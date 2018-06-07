@@ -19,7 +19,7 @@ Small (can be done by occassion)
 * Provide alternative to CFunc.typedef:
   ts.rettype(ts.argtype1, ts.argtype2, ...)?
 * .cstr functions shall always operate bytewise
-* .val shall not accept .raw any more
+* .val shall not accept .mem any more
 * when only a single test was run, "rerun_first_failed_pytest" shall repeat this
   test no matter if it succeded or not
   (otherwise it is hard to debug into a passing test that should fail)
