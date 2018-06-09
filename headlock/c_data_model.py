@@ -13,17 +13,37 @@ class WriteProtectError(Exception):
 CTypePointer = type(ct.POINTER(ct.c_int))
 CTypePyFuncPointer = type(ct.CFUNCTYPE(None))
 
+
 def issubclass_ctypes_ptr(cls):
     return cls == ct.c_char_p or cls == ct.c_wchar_p or \
            isinstance(cls, CTypePointer) or isinstance(cls, CTypePyFuncPointer)
+
 
 def issubclass_ctypes(cls):
     # this is a dirty hack, as there is no access to the public visible
     # common base class of ctypes objects
     return cls.__mro__[-2].__name__ == '_CData'
 
+
 def isinstance_ctypes(obj):
     return issubclass_ctypes(type(obj))
+
+
+def map_unicode_to_list(val, base_type):
+    if not issubclass(base_type, CInt):
+        raise TypeError('Python Strings can only be assigned to '
+                        'arrays/pointers of scalars')
+    else:
+        elem_bits = min(base_type.bits, 32)
+        enc_val = val.encode(f'utf{elem_bits}')
+        if elem_bits == 8:
+            result = list(enc_val)
+        else:
+            elem_len = elem_bits // 8
+            conv_val = [int.from_bytes(enc_val[pos:pos+elem_len], 'little')
+                        for pos in range(0, len(enc_val), elem_len)]
+            result = conv_val[1:]
+        return result + [0]
 
 
 class CObjType(type):
@@ -358,6 +378,7 @@ class CVoid(CObj):
             result += ' ' + refering_def
         return result
 
+
 class CInt(CObj):
 
     bits = None
@@ -417,6 +438,18 @@ class CPointer(CObj):
 
     PRECEDENCE = 10
 
+    def __init__(self, init_val=None, _depends_on_=None):
+        if isinstance(init_val, collections.Iterable) \
+                and not isinstance(init_val, CObj) \
+                and not isinstance_ctypes(init_val):
+            if isinstance(init_val, str):
+                init_val = map_unicode_to_list(init_val, self.base_type)
+            assert _depends_on_ is None
+            if not isinstance(init_val, collections.Sequence):
+                init_val = list(init_val)
+            init_val = self.base_type.array(len(init_val))(init_val)
+        super(CPointer, self).__init__(init_val, _depends_on_)
+
     @classmethod
     def typedef(cls, base_type):
         return type(base_type.__name__ + '_ptr',
@@ -463,19 +496,12 @@ class CPointer(CObj):
             self._as_ctypes_int.value = pyobj
         elif isinstance(pyobj, CArray) and self.base_type == pyobj.base_type:
             self.val = pyobj.ptr.val
-        elif isinstance(pyobj, str):
-            for pos, val in enumerate(pyobj):
-                self[pos].val = ord(val)
         elif isinstance(pyobj, collections.Iterable) \
-            and not isinstance(pyobj, (CObj,
-                                       CMemory,
-                                       collections.abc.ByteString,
-                                       memoryview)):
-            lst = list(pyobj)
-            array_type = self.base_type.array(len(lst))
-            array = array_type(lst)
-            self.val = array
-            self._depends_on_ = array
+                and not isinstance(pyobj, CObj):
+            if isinstance(pyobj, str):
+                pyobj = map_unicode_to_list(pyobj, self.base_type)
+            for ndx, item in enumerate(pyobj):
+                self[ndx].val = item
         else:
             super()._set_val(pyobj)
 
@@ -630,18 +656,12 @@ class CArray(CObj):
 
     def _set_val(self, new_val):
         if isinstance(new_val, str):
-            if len(new_val) > len(self):
-                raise ValueError('string is too long')
-            self.val = list(map(ord, new_val)) + [0]*(len(self) - len(new_val))
-        else:
-            try:
-                super()._set_val(memoryview(new_val))
-            except TypeError:
-                ndx = 0
-                for ndx, val in enumerate(new_val):
-                    self[ndx].val = val
-                for ndx2 in range(ndx+1, self.element_count):
-                    self[ndx2].val = self.base_type.null_val
+            new_val = map_unicode_to_list(new_val, self.base_type)
+        ndx = 0
+        for ndx, val in enumerate(new_val):
+            self[ndx].val = val
+        for ndx2 in range(ndx+1, self.element_count):
+            self[ndx2].val = self.base_type.null_val
 
     @property
     def cstr(self):

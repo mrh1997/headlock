@@ -1,5 +1,5 @@
 import ctypes as ct
-
+from unittest.mock import patch
 import collections
 import pytest
 import headlock.c_data_model
@@ -116,9 +116,9 @@ class TestCMemory:
 
 
 class DummyInt(headlock.c_data_model.CInt):
-    bits = ct.sizeof(ct.c_int)*8
+    bits = 32
     signed = True
-    ctypes_type = ct.c_int
+    ctypes_type = ct.c_int32
 
 
 class DummyShortInt(headlock.c_data_model.CInt):
@@ -431,9 +431,22 @@ class TestCPointer:
         assert DummyShortInt.ptr(int_ptr)._depends_on_ == int_obj
 
     def test_create_fromCArray_returnsCastedArray(self):
-        array = DummyShortInt.array(9)()
+        array = DummyShortInt.array(9)([0x1122, 0x3344])
         ptr = DummyInt.ptr(array)
         assert ptr.val == array.ptr.val
+        assert ptr[0] == 0x33441122
+
+    @pytest.mark.parametrize('initval', [
+        b'\x11\x22\x33', '\x11\x22\x33', [0x11, 0x22, 0x33],
+        iter([0x11, 0x22, 0x33])])
+    def test_create_fromPyIterable_createsReferredArrayFromIterable(self, initval):
+        int_ptr = DummyInt.ptr(initval)
+        assert int_ptr._depends_on_ is not None
+        assert int_ptr[:3] == [0x11, 0x22, 0x33]
+
+    def test_create_fromUnicodeObject_createsArrayWithSizeDependingOnDecodedUnicode(self):
+        int_ptr = DummyInt.ptr('\U00012345\u1234')
+        assert int_ptr[:3] == [0x12345, 0x1234, 0]
 
     def test_getPtr_onInt_returnsPointerObj(self):
         intObj = DummyInt(999)
@@ -447,13 +460,13 @@ class TestCPointer:
         ptr = DummyInt.ptr(ct.addressof(ctypes_int))
         assert ptr.val == ct.addressof(ctypes_int)
 
-    def test_getCStr_onZeroTerminatedStr_returnsPyString(self):
-        array = DummyInt.array(3)([ord('X'), ord('y')])
+    def test_getCStr_onZeroTerminatedStr_returnsBytes(self):
+        array = DummyInt.array(3)([ord('X'), ord('y'), 0])
         assert array[0].ptr.cstr == 'Xy'
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
         array = DummyInt.array(5)()
-        array[0].ptr.cstr = 'Xy\0z'
+        array[0].ptr.cstr = b'Xy\0z'
         assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0]
 
     def test_int_returnsAddress(self):
@@ -476,26 +489,30 @@ class TestCPointer:
         ptr.val = 0
         assert ptr.val == 0
 
-    def test_setVal_onBuf_setsRawData(self):
-        ptr = DummyInt.ptr()
-        ptr.val = 0x123456.to_bytes(ct.sizeof(ct.c_void_p), 'little')
-        assert ptr.val == 0x123456
-
     def test_setVal_onCArray_setsAddressOfArray(self):
-        array = DummyInt.array(3)()
-        ptr = DummyInt.ptr()
-        ptr.val = array
-        assert ptr.val == array.ptr.val
+        int_arr = DummyInt.array(3)()
+        int_ptr = DummyInt.ptr()
+        int_ptr.val = int_arr
+        assert int_ptr.val == int_arr.ptr.val
+
+    @pytest.mark.parametrize('setval', [
+        b'\x11\x22\x33', [0x11, 0x22, 0x33], iter([0x11, 0x22, 0x33])])
+    def test_setVal_onIterable_fillsReferredElemsByIterable(self, setval):
+        int_arr = DummyInt.array(4)([0x99, 0x99, 0x99, 0x99])
+        int_ptr = int_arr[0].ptr
+        int_ptr.val = setval
+        assert int_arr.val == [0x11, 0x22, 0x33, 0x99]
+
+    def test_setVal_fromUnicodeObject_fillsReferredElemsWithDecodedUnicodePlus0(self):
+        int_arr = DummyInt.array(3)([0x99, 0x99, 0x99])
+        int_ptr = int_arr[0].ptr
+        int_ptr.val = '\U00012345\u1234'
+        assert int_arr == [0x12345, 0x1234, 0]
 
     def test_setVal_onConstCObj_raisesWriteProtectError(self):
         const_ptr_obj = DummyInt.ptr.with_attr('const')(3)
         with pytest.raises(headlock.c_data_model.WriteProtectError):
             const_ptr_obj.val = 4
-
-    def test_create_onPyArray_createsAndReturnsCArray(self):
-        ptr = DummyInt.ptr()
-        ptr.val = [0x11, 0x22]
-        assert ptr[0].val == 0x11  and  ptr[1].val == 0x22
 
     def test_getRef_ok(self):
         cobj = DummyInt(999)
@@ -656,6 +673,11 @@ class TestCArray:
         assert array.ctypes_obj[2] == 33
         assert array.ctypes_obj[3] == 44
 
+    def test_create_fromUtf8WithBigCodepoint_returnsArrayOfCorrectSize(self):
+        array = DummyInt.array(2)('\u1122')
+        assert array.ctypes_obj[0] == 0x1122
+        assert array.ctypes_obj[1] == 0
+
     def test_len_returnsSizeOfObject(self):
         array_type = DummyInt.array(44)
         assert len(array_type) == 44
@@ -665,36 +687,42 @@ class TestCArray:
         array_obj = DummyInt.array(4)([0x11, 0x22, 0x33, 0x44])
         assert array_obj.val == [0x11, 0x22, 0x33, 0x44]
 
-    def test_setVal_withEmptyIterable_resetsItemsToNullValue(self):
-        array = DummyInt.array(100)()
-        array.val = []
-        assert array == array.null_val
-
-    def test_setVal_withIterable_convertsToCTypesObj(self):
-        array = DummyInt.array(100)()
-        array.val = reversed(range(100))
-        assert all(array.ctypes_obj[ndx] == 99-ndx
-                   for ndx in range(100))
-
-    def test_setVal_withShorterPyList_fillsRemainingEntriesWithDefaultEntries(self):
-        array = DummyInt.array(3)()
-        array.val = [0x11, 0x22]
-        assert array.val == [0x11, 0x22, 0]
-
-    def test_setVal_onPyStrOfSameLen_ok(self):
-        array = DummyInt.array(2)()
-        array.val = 'Xy'
-        assert array.val == [ord('X'), ord('y')]
-
-    def test_setVal_onSmallerPyStr_fillsRemainingBytesWith0(self):
-        array = DummyInt.array(4)()
-        array.cstr = 'Xy'
-        assert array.val == [ord('X'), ord('y'), 0, 0]
-
-    def test_setVal_onBuf_setsRawData(self):
+    @pytest.mark.parametrize('init_iter',
+        [b'\x11\x22\x33', [0x11, 0x22, 0x33], iter([0x11, 0x22, 0x33])])
+    def test_setVal_onIterable_setsArrayElemFromIterableEnries(self, init_iter):
         array = DummyShortInt.array(3)()
-        array.val = bytearray.fromhex("11 22 33 44 55 66")
-        assert array.val == [0x2211, 0x4433, 0x6655]
+        array.val = init_iter
+        assert array.val == [0x11, 0x22, 0x33]
+
+    def test_setVal_onIterable_convertsToCTypesObj(self):
+        array = DummyInt.array(2)()
+        array.val = [0x11, 0x22]
+        assert array.ctypes_obj[0] == 0x11
+        assert array.ctypes_obj[1] == 0x22
+
+    def test_setVal_withOnShorterIterable_setsRemainingEntriesToNull(self):
+        array = DummyInt.array(3)([0x99, 0x99, 0x99])
+        array.val = [0x11]
+        assert array.val == [0x11, 0x00, 0x00]
+
+    def test_setVal_onStringTo8BitArray_storesArrayElemUtf8Encoded(self):
+        class DummyByte(headlock.c_data_model.CInt):
+            bits = 8
+            signed = False
+            ctypes_type = ct.c_uint8
+        array = DummyByte.array(9)()
+        array.val = '\x11\u2233\U00014455'
+        assert array.val == [0x11, 0xe2, 0x88, 0xb3, 0xf0, 0x94, 0x91, 0x95, 0]
+
+    def test_setVal_onStringTo16BitArray_storesArrayElemUtf16Encoded(self):
+        array = DummyShortInt.array(5)()
+        array.val = '\x11\u2233\U00014455'
+        assert array.val == [0x0011, 0x2233, 0xD811, 0xDC55, 0]
+
+    def test_setVal_onStringTo32BitArray_storesArrayElemUtf32Encoded(self):
+        array = DummyInt.array(4)()
+        array.val = '\x11\u2233\U00014455'
+        assert array.val == [0x00000011, 0x00002233, 0x00014455, 0]
 
     def test_str_returnsStringWithZeros(self):
         array = DummyShortInt.array(3)([ord('x'), ord('Y'), 0])
