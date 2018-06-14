@@ -400,6 +400,10 @@ class CInt(CObj):
             raise WriteProtectError()
         if pyobj is None:
             pyobj = 0
+        elif isinstance(pyobj, (collections.abc.ByteString, str)):
+            if len(pyobj) != 1:
+                raise ValueError(f'{pyobj!r} must contain exactly 1 character')
+            pyobj = ord(pyobj)
 
         if isinstance(pyobj, int):
             self.ctypes_obj.value = pyobj

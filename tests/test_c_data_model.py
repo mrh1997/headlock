@@ -215,11 +215,6 @@ class TestCInt:
         assert intObj.ctypes_obj.value == 1111
         assert ct.addressof(intObj.ctypes_obj) == orig_adr
 
-    def test_setVal_onBuf_writesDirectToMemory(self):
-        int_obj = DummyInt()
-        int_obj.val = bytearray.fromhex("34 00 12 00")
-        assert int_obj.val ==  0x00120034
-
     def test_setVal_onCObj_writesValOfCObj(self):
         int_obj = DummyInt()
         int_obj.val = DummyShortInt(2)
@@ -229,6 +224,16 @@ class TestCInt:
         const_int_obj = DummyInt.with_attr('const')(3)
         with pytest.raises(headlock.c_data_model.WriteProtectError):
             const_int_obj.val = 4
+
+    def test_setVal_onBytesOfSize1_setsAsciiCode(self):
+        int_obj = DummyInt()
+        int_obj.val = b'\xFF'
+        assert int_obj == 0xFF
+
+    def test_setVal_onStrOfSize1_setsUnicodeCode(self):
+        int_obj = DummyInt()
+        int_obj.val = '\U00012345'
+        assert int_obj == 0x12345
 
     def test_repr_returnsClassNameAndValue(self):
         assert repr(DummyInt(1234)) == 'DummyInt(1234)'
