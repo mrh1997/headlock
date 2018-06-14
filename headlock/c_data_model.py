@@ -231,7 +231,7 @@ class CObj(metaclass=CObjType):
         return cls._ptr
 
     @property
-    def ptr(self):
+    def adr(self):
         # type: () -> CPointer
         ptr = self._get_ptr_type()
         return ptr(ptr.ctypes_type(self.ctypes_obj), _depends_on_=self)
@@ -509,7 +509,7 @@ class CPointer(CObj):
         elif isinstance(pyobj, int):
             self._as_ctypes_int.value = pyobj
         elif isinstance(pyobj, CArray) and self.base_type == pyobj.base_type:
-            self.val = pyobj.ptr.val
+            self.val = pyobj.adr.val
         elif isinstance(pyobj, collections.Iterable) \
                 and not isinstance(pyobj, CObj):
             if isinstance(pyobj, str):
@@ -541,7 +541,7 @@ class CPointer(CObj):
 
     def _cast_from(self, cobj):
         if isinstance(cobj, CArray):
-            self.val = cobj.ptr.val
+            self.val = cobj.adr.val
             self._depends_on_ = cobj
         else:
             super(CPointer, self)._cast_from(cobj)
@@ -574,7 +574,7 @@ class CPointer(CObj):
                 raise TypeError(
                     f'Cannot subtract array from pointer of different '
                     f'types ({type(self).__name__} and {type(other).__name__})')
-            return (self.val - other[0].ptr.val) // self.base_type.sizeof
+            return (self.val - other[0].adr.val) // self.base_type.sizeof
         else:
             newobj = self.copy()
             newobj -= int(other)
@@ -710,7 +710,7 @@ class CArray(CObj):
         self.val = new_val
 
     def __add__(self, other):
-        return self[0].ptr + other
+        return self[0].adr + other
 
     def __str__(self):
         return ''.join(chr(c) for c in self.val[0:self.element_count])
@@ -1054,7 +1054,7 @@ class CFunc(CObj):
             return f'{type(self).__name__}({self.pyfunc})'
 
     @property
-    def ptr(self):
+    def adr(self):
         ptr_ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_int))
         return type(self).ptr(ptr_ptr.contents.value, _depends_on_=self)
 
@@ -1105,7 +1105,7 @@ class CFuncPointer(CPointer):
             func_obj = self.base_type(init_obj)
             if _depends_on_ is None:
                 _depends_on_ = func_obj
-            super().__init__(func_obj.ptr, _depends_on_=_depends_on_)
+            super().__init__(func_obj.adr, _depends_on_=_depends_on_)
         else:
             super().__init__(init_obj, _depends_on_=_depends_on_)
 

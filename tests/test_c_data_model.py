@@ -306,7 +306,7 @@ class TestCInt:
 
     def test_add_onPyObj_ok(self):
         intobj = DummyInt(4)
-        adr = intobj.ptr.val
+        adr = intobj.adr.val
         intobj2 = intobj + 1
         assert intobj.val == 4
         assert intobj2.val == 5
@@ -319,21 +319,21 @@ class TestCInt:
 
     def test_radd_onPyObj_ok(self):
         intobj = DummyInt(4)
-        adr = intobj.ptr.val
+        adr = intobj.adr.val
         intobj2 = 1 + intobj
         assert intobj.val == 4
         assert intobj2.val == 5
 
     def test_iadd_operatesInplace(self):
         intobj = DummyInt(3)
-        adr = intobj.ptr
+        adr = intobj.adr
         intobj += 4
         assert intobj.val == 7
-        assert intobj.ptr == adr
+        assert intobj.adr == adr
 
     def test_sub_onPyObj_ok(self):
         intobj = DummyInt(4)
-        adr = intobj.ptr.val
+        adr = intobj.adr.val
         intobj2 = intobj - 1
         assert intobj.val == 4
         assert intobj2.val == 3
@@ -346,17 +346,17 @@ class TestCInt:
 
     def test_rsub_onPyObj_ok(self):
         intobj = DummyInt(4)
-        adr = intobj.ptr.val
+        adr = intobj.adr.val
         intobj2 = 5 - intobj
         assert intobj.val == 4
         assert intobj2.val == 1
 
     def test_isub_operatesInplace(self):
         intobj = DummyInt(7)
-        adr = intobj.ptr
+        adr = intobj.adr
         intobj -= 3
         assert intobj.val == 4
-        assert intobj.ptr == adr
+        assert intobj.adr == adr
 
     def test_index_ok(self):
         array = [0x11, 0x22, 0x33]
@@ -369,7 +369,7 @@ class TestCInt:
         intobj = DummyInt(999)
         intobj_copy = intobj.copy()
         assert intobj.val == intobj_copy.val
-        assert intobj.ptr != intobj_copy.ptr
+        assert intobj.adr != intobj_copy.adr
 
     def test_getMem_returnsBufferOfRawData(self):
         int_obj = DummyInt(0x120084)
@@ -436,14 +436,14 @@ class TestCPointer:
 
     def test_create_fromCPointer_hasSameDependsOn(self):
         int_obj = DummyInt()
-        int_ptr = int_obj.ptr
+        int_ptr = int_obj.adr
         assert int_ptr._depends_on_ == int_obj
         assert DummyShortInt.ptr(int_ptr)._depends_on_ == int_obj
 
     def test_create_fromCArray_returnsCastedArray(self):
         array = DummyShortInt.alloc_array([0x1122, 0x3344])
         ptr = DummyInt.ptr(array)
-        assert ptr.val == array.ptr.val
+        assert ptr.val == array.adr.val
         assert ptr[0] == 0x33441122
 
     @pytest.mark.parametrize('initval', [
@@ -458,12 +458,12 @@ class TestCPointer:
         int_ptr = DummyInt.ptr('\U00012345\u1234')
         assert int_ptr[:3] == [0x12345, 0x1234, 0]
 
-    def test_getPtr_onInt_returnsPointerObj(self):
-        intObj = DummyInt(999)
-        int_ptr = intObj.ptr
+    def test_getAdr_onInt_returnsPointerObj(self):
+        int_obj = DummyInt(999)
+        int_ptr = int_obj.adr
         assert isinstance(int_ptr, headlock.c_data_model.CPointer)
         assert ct.addressof(int_ptr.ctypes_obj.contents) == \
-               ct.addressof(intObj.ctypes_obj)
+               ct.addressof(int_obj.ctypes_obj)
 
     def test_getVal_returnsAddress(self):
         ctypes_int = ct.c_int32()
@@ -472,20 +472,20 @@ class TestCPointer:
 
     def test_getUnicodeStr_onZeroTerminatedStr_returnsPyString(self):
         array = DummyInt.alloc_array([0x1234, 0x56, 0])
-        assert array[0].ptr.unicode_str == '\u1234\x56'
+        assert array[0].adr.unicode_str == '\u1234\x56'
 
     def test_setUnicodeStr_onPyStr_changesArrayToZeroTerminatedString(self):
         array = DummyInt.alloc_array(5)
-        array[0].ptr.unicode_str = '\u1234\x56\0\x78'
+        array[0].adr.unicode_str = '\u1234\x56\0\x78'
         assert array.val == [0x1234, 0x56, 0, 0x78, 0]
 
     def test_getCStr_onZeroTerminatedStr_returnsBytes(self):
         array = DummyInt.alloc_array([ord('X'), ord('y'), 0])
-        assert array[0].ptr.c_str == b'Xy'
+        assert array[0].adr.c_str == b'Xy'
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
         array = DummyInt.alloc_array(5)
-        array[0].ptr.c_str = b'Xy\0z'
+        array[0].adr.c_str = b'Xy\0z'
         assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0]
 
     def test_int_returnsAddress(self):
@@ -512,19 +512,19 @@ class TestCPointer:
         int_arr = DummyInt.alloc_array(3)
         int_ptr = DummyInt.ptr()
         int_ptr.val = int_arr
-        assert int_ptr.val == int_arr.ptr.val
+        assert int_ptr.val == int_arr.adr.val
 
     @pytest.mark.parametrize('setval', [
         b'\x11\x22\x33', [0x11, 0x22, 0x33], iter([0x11, 0x22, 0x33])])
     def test_setVal_onIterable_fillsReferredElemsByIterable(self, setval):
         int_arr = DummyInt.alloc_array([0x99, 0x99, 0x99, 0x99])
-        int_ptr = int_arr[0].ptr
+        int_ptr = int_arr[0].adr
         int_ptr.val = setval
         assert int_arr.val == [0x11, 0x22, 0x33, 0x99]
 
     def test_setVal_fromUnicodeObject_fillsReferredElemsWithDecodedUnicodePlus0(self):
         int_arr = DummyInt.alloc_array([0x99, 0x99, 0x99])
-        int_ptr = int_arr[0].ptr
+        int_ptr = int_arr[0].adr
         int_ptr.val = '\U00012345\u1234'
         assert int_arr == [0x12345, 0x1234, 0]
 
@@ -535,22 +535,22 @@ class TestCPointer:
 
     def test_getRef_ok(self):
         cobj = DummyInt(999)
-        _ptrobj = cobj.ptr
+        _ptrobj = cobj.adr
         assert _ptrobj.ref.val == cobj.val
 
     def test_setRef_ok(self):
         cobj = DummyInt(999)
-        ptr = cobj.ptr
+        ptr = cobj.adr
         ptr.ref.val = 1111
         assert cobj.val == 1111
 
-    def test_getPtr_onPtrToPtr_ok(self):
+    def test_getAdr_onPtr_ok(self):
         cobj = DummyInt(999)
-        ptr_ptr = cobj.ptr.ptr
+        ptr_ptr = cobj.adr.adr
         assert ptr_ptr.ref.ref.val == cobj.val
 
     def test_repr_returnsClassNameAndHexValue(self):
-        ptr = DummyInt(1234).ptr
+        ptr = DummyInt(1234).adr
         assert repr(ptr) == f'DummyInt_ptr(0x{ptr.val:08X})'
 
     def test_sizeof_returnsSameSizeAsInt(self):
@@ -560,58 +560,58 @@ class TestCPointer:
         assert DummyShortInt.null_val == 0
 
     def test_add_returnsNewPointerAtIncrementedAddress(self):
-        int_ptr = DummyShortInt(999).ptr
+        int_ptr = DummyShortInt(999).adr
         moved_intptr = int_ptr + 100
         assert int_ptr.val + 200 == moved_intptr.val
 
     def test_add_onCInt_ok(self):
-        int_ptr = DummyInt(1).ptr
+        int_ptr = DummyInt(1).adr
         moved_intptr = int_ptr + DummyInt(1)
         assert moved_intptr.val == int_ptr.val + DummyInt.sizeof
 
     def test_sub_returnsNewPointerAtDecrementedAddress(self):
-        int_ptr = DummyShortInt(999).ptr
+        int_ptr = DummyShortInt(999).adr
         moved_intptr = int_ptr - 100
         assert int_ptr.val - 200 == moved_intptr.val
 
     def test_sub_onCPointer_returnsNumberOfElementsInBetween(self):
         obj_arr = DummyShortInt.alloc_array(3)
-        adr0 = obj_arr[0].ptr
-        adr2 = obj_arr[2].ptr
+        adr0 = obj_arr[0].adr
+        adr2 = obj_arr[2].adr
         assert adr2 - adr0 == 2
         assert isinstance(adr2 - adr0, int)
 
     def test_sub_onCPointerOfDifferrentType_raisesTypeError(self):
-        adr1 = DummyInt().ptr
-        adr2 = DummyShortInt().ptr
+        adr1 = DummyInt().adr
+        adr2 = DummyShortInt().adr
         with pytest.raises(TypeError):
             adr2 - adr1
 
     def test_sub_onCArray_returnsNumberOfElementsInBetween(self):
         obj_arr = DummyShortInt.alloc_array(3)
-        adr2 = obj_arr[2].ptr
+        adr2 = obj_arr[2].adr
         assert adr2 - obj_arr == 2
         assert isinstance(adr2 - obj_arr, int)
 
     def test_sub_onCPointerOfDifferrentType_raisesTypeError(self):
         short_arr = DummyShortInt.alloc_array(3)
-        adr2 = DummyInt().ptr
+        adr2 = DummyInt().adr
         with pytest.raises(TypeError):
             adr2 - short_arr
 
     def test_sub_onCInt_ok(self):
-        int_ptr = DummyInt(1).ptr
+        int_ptr = DummyInt(1).adr
         moved_intptr = int_ptr - DummyInt(1)
         assert moved_intptr.val == int_ptr.val - DummyInt.sizeof
 
     def test_getItem_onNdx_returnsCObjAtNdx(self):
         array = DummyInt.alloc_array([0x11, 0x22, 0x33])
-        ptr = DummyInt.ptr(array.ptr)
+        ptr = DummyInt.ptr(array.adr)
         assert ptr[1] == 0x22  and  ptr[2] == 0x33
 
     def test_getItem_onSlice_returnsCArrayOfCObjAtSlice(self):
         array = DummyInt.alloc_array([0x11, 0x22, 0x33, 0x44])
-        ptr = DummyInt.ptr(array.ptr)
+        ptr = DummyInt.ptr(array.adr)
         part_array = ptr[1:3]
         assert type(part_array) == DummyInt.array(2)
         assert part_array.val == [0x22, 0x33]
@@ -789,19 +789,19 @@ class TestCArray:
 
     def test_getItem_returnsObjectAtNdx(self):
         array_obj = DummyShortInt.array(4)([1, 2, 3, 4])
-        assert array_obj[2].ptr.val == array_obj.ptr.val+2*DummyShortInt.sizeof
+        assert array_obj[2].adr.val == array_obj.adr.val+2*DummyShortInt.sizeof
 
     def test_getItem_onNegativeIndex_returnsElementFromEnd(self):
         array_obj = DummyInt.array(4)([1, 2, 3, 4])
-        assert array_obj[-1].ptr == array_obj[3].ptr
+        assert array_obj[-1].adr == array_obj[3].adr
 
     def test_getItem_onSlice_returnsSubArray(self):
         array_obj = DummyInt.array(4)([1, 2, 3, 4])
         sliced_array = array_obj[1:3]
         assert type(sliced_array), DummyInt.array(2)
         assert sliced_array.val == [2, 3]
-        assert [obj.ptr for obj in sliced_array] == \
-               [array_obj[1].ptr, array_obj[2].ptr]
+        assert [obj.adr for obj in sliced_array] == \
+               [array_obj[1].adr, array_obj[2].adr]
 
     def test_getItem_onSliceWithSteps_raiseValueError(self):
         array_obj = DummyInt.array(4)([1, 2, 3, 4])
@@ -811,24 +811,24 @@ class TestCArray:
     def test_getItem_onSliceWithNegativeBoundaries_returnsPartOfArrayFromEnd(self):
         array_obj = DummyInt.array(5)([1, 2, 3, 4, 5])
         sliced_array = array_obj[-3:-1]
-        assert [obj.ptr for obj in sliced_array] == \
-               [array_obj[2].ptr, array_obj[3].ptr]
+        assert [obj.adr for obj in sliced_array] == \
+               [array_obj[2].adr, array_obj[3].adr]
 
     def test_getItem_onSliceWithOpenEnd_returnsPartOfArrayUntilEnd(self):
         array_obj = DummyInt.array(4)([1, 2, 3, 4])
         sliced_array = array_obj[1:]
-        assert [obj.ptr for obj in sliced_array] == \
-               [array_obj[1].ptr, array_obj[2].ptr, array_obj[3].ptr]
+        assert [obj.adr for obj in sliced_array] == \
+               [array_obj[1].adr, array_obj[2].adr, array_obj[3].adr]
 
     def test_getItem_onSliceWithOpenStart_returnsPartOfArrayFromStart(self):
         array_obj = DummyInt.array(4)([1, 2, 3, 4])
         sliced_array = array_obj[:3]
-        assert [obj.ptr for obj in sliced_array] == \
-               [array_obj[0].ptr, array_obj[1].ptr, array_obj[2].ptr]
+        assert [obj.adr for obj in sliced_array] == \
+               [array_obj[0].adr, array_obj[1].adr, array_obj[2].adr]
 
     def test_add_returnsPointer(self):
         array = DummyInt.array(4)()
-        assert array + 3 == array[3].ptr
+        assert array + 3 == array[3].adr
 
     def test_repr_returnsClassNameAndContent(self):
         assert repr(DummyInt.array(3)()) == 'DummyInt_3([0, 0, 0])'
@@ -949,21 +949,21 @@ class TestCStruct:
         struct = DummyStruct(111111, 222, 3)
         member_int = struct['member_int']
         assert isinstance(member_int, DummyInt)
-        assert member_int.ptr.val == struct.ptr.val
+        assert member_int.adr.val == struct.adr.val
         assert member_int.val == 111111
         member_short = struct['member_short']
         assert isinstance(member_short, DummyShortInt)
-        assert member_short.ptr.val > struct.ptr.val
+        assert member_short.adr.val > struct.adr.val
         assert member_short.val == 222
         member_int2 = struct['member_int2']
         assert isinstance(member_int2, DummyInt)
-        assert member_int2.ptr.val > struct.ptr.val
+        assert member_int2.adr.val > struct.adr.val
         assert member_int2.val == 3
 
     def test_getItem_onIndex_returnsPyObjOfMembers(self, DummyStruct):
         struct = DummyStruct()
-        assert struct[0].ptr == struct['member_int'].ptr
-        assert struct[1].ptr == struct['member_short'].ptr
+        assert struct[0].adr == struct['member_int'].adr
+        assert struct[1].adr == struct['member_short'].adr
 
     def test_len_returnsNumberOfMembers(self, DummyStruct):
         assert len(DummyStruct) == 3
@@ -976,11 +976,11 @@ class TestCStruct:
 
     def test_CMemberGet_onInstance_createsPyObjOfMember(self, DummyStruct):
         struct = DummyStruct()
-        assert struct.member_int.ptr == struct['member_int'].ptr
-        assert struct.member_short.ptr == struct['member_short'].ptr
+        assert struct.member_int.adr == struct['member_int'].adr
+        assert struct.member_short.adr == struct['member_short'].adr
 
     @pytest.mark.parametrize('name', [
-        'val', 'ptr', 'typedef', 'c_definition', 'sizeof'])
+        'val', 'adr', 'typedef', 'c_definition', 'sizeof'])
     def test_CMemberGet_onReservedName_isNotEnabled(self, name):
         struct = headlock.c_data_model.CStruct.typedef(
             'StructWithReservedMemberNames',
@@ -1066,7 +1066,7 @@ class TestCStruct:
     def test_delayedDef_onRecursiveStruct_ok(self):
         TestStruct = headlock.c_data_model.CStruct.typedef('TestStruct')
         TestStruct.delayed_def(('nested', TestStruct.ptr))
-        test_struct = TestStruct(TestStruct().ptr)
+        test_struct = TestStruct(TestStruct().adr)
         assert isinstance(test_struct.nested.ref, TestStruct)
 
     def test_typeEq_onNoType_returnsFalse(self, DummyStruct):
@@ -1217,8 +1217,8 @@ class TestCFunc:
     def test_create_fromCallableThatReturnsPtr_ok(self):
         var = DummyInt(0)
         func_type = headlock.c_data_model.CFunc.typedef(returns=DummyInt.ptr)
-        func = func_type(lambda: var.ptr)
-        assert func() == var.ptr
+        func = func_type(lambda: var.adr)
+        assert func() == var.adr
 
     def test_create_fromNoParam_raisesValueError(self, DummyCFunc):
         with pytest.raises(ValueError):
@@ -1337,16 +1337,16 @@ class TestCFunc:
             DummyCFunc.sizeof()
 
     def test_getPtr_onPyCallback_returnsCFuncPointer(self, dummy_callback):
-        func_ptr = dummy_callback.ptr
+        func_ptr = dummy_callback.adr
         assert isinstance(func_ptr, headlock.c_data_model.CFuncPointer)
         assert func_ptr(0, 0, 0).val == 1
 
     def test_getPtr_onPyCallback_setsDependsOn(self, dummy_callback):
-        func_ptr = dummy_callback.ptr
+        func_ptr = dummy_callback.adr
         assert func_ptr._depends_on_ is dummy_callback
 
     def test_getPtr_onCFunc_returnsCFuncPointer(self, abs_func):
-        func_ptr = abs_func.ptr
+        func_ptr = abs_func.adr
         assert isinstance(func_ptr, headlock.c_data_model.CFuncPointer)
         assert func_ptr(-2).val == 2
 
@@ -1405,7 +1405,7 @@ class TestCFuncPointer:
         assert func_ptr._depends_on_.language == 'PYTHON'
 
     def test_ref_returnsObjOfTypeCFunc(self, dummy_callback):
-        func_ptr = dummy_callback.ptr
+        func_ptr = dummy_callback.adr
         assert isinstance(func_ptr.ref, headlock.c_data_model.CFunc)
 
     def test_sizeof_onFuncPtr_returnsMachineWordSize(self, DummyCFunc):
@@ -1414,16 +1414,16 @@ class TestCFuncPointer:
 
     def test_getPtr_returnsCPointer(self, DummyCFunc):
         func_ptr = DummyCFunc.ptr(0)
-        func_ptr_ptr = func_ptr.ptr
+        func_ptr_ptr = func_ptr.adr
         assert isinstance(func_ptr_ptr, headlock.c_data_model.CPointer)
         assert func_ptr_ptr.ref == func_ptr
 
     def test_call_onCFunc_runsCCode(self, abs_func):
-        func_ptr = abs_func.ptr
+        func_ptr = abs_func.adr
         assert abs_func(-3) == 3
 
     def test_call_onPyCallback_runsPythonCode(self, dummy_callback):
-        func_ptr = dummy_callback.ptr
+        func_ptr = dummy_callback.adr
         assert func_ptr(11, 22, 33) == 1
 
     @pytest.mark.parametrize('repeat', range(100))
@@ -1451,7 +1451,7 @@ class TestCVoid:
 
     def test_getMem_returnsCRawAccessWithMaxSizeNone(self):
         int = DummyInt()
-        void_ptr = headlock.c_data_model.CVoid.ptr(int.ptr.val)
+        void_ptr = headlock.c_data_model.CVoid.ptr(int.adr.val)
         assert void_ptr.ref.mem.max_size is None
 
 

@@ -371,7 +371,7 @@ class TestSetup(BuildInDefs):
         callback_func = cfunc_type(callback_wrapper, logger=self.__logger__())
 
         callback_ptr = ct.c_void_p.in_dll(self.__dll, name + '_mock')
-        callback_ptr.value = callback_func.ptr.val
+        callback_ptr.value = callback_func.adr.val
 
         # ensure that callback closure is not garbage collected:
         self._global_refs_[name + '_mock'] = callback_func
