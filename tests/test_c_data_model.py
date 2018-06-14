@@ -460,13 +460,22 @@ class TestCPointer:
         ptr = DummyInt.ptr(ct.addressof(ctypes_int))
         assert ptr.val == ct.addressof(ctypes_int)
 
+    def test_getUnicodeStr_onZeroTerminatedStr_returnsPyString(self):
+        array = DummyInt.array(3)([0x1234, 0x56, 0])
+        assert array[0].ptr.unicode_str == '\u1234\x56'
+
+    def test_setUnicodeStr_onPyStr_changesArrayToZeroTerminatedString(self):
+        array = DummyInt.array(5)()
+        array[0].ptr.unicode_str = '\u1234\x56\0\x78'
+        assert array.val == [0x1234, 0x56, 0, 0x78, 0]
+
     def test_getCStr_onZeroTerminatedStr_returnsBytes(self):
         array = DummyInt.array(3)([ord('X'), ord('y'), 0])
-        assert array[0].ptr.cstr == 'Xy'
+        assert array[0].ptr.c_str == b'Xy'
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
         array = DummyInt.array(5)()
-        array[0].ptr.cstr = b'Xy\0z'
+        array[0].ptr.c_str = b'Xy\0z'
         assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0]
 
     def test_int_returnsAddress(self):
@@ -728,24 +737,33 @@ class TestCArray:
         array = DummyShortInt.array(3)([ord('x'), ord('Y'), 0])
         assert str(array) == 'xY\0'
 
-    def test_getCStr_onZeroTerminatedStr_returnsPyString(self):
-        array = DummyInt.array(3)([ord('X'), ord('y')])
-        assert array.cstr == 'Xy'
-
-    def test_getCStr_onNonZeroTerminatedStr_raisesValueError(self):
-        array = DummyInt.array(3)([ord('X'), ord('y'), ord('z')])
-        with pytest.raises(ValueError):
-            _ = array.cstr
+    def test_getCStr_onZeroTerminatedStr_returnsBytes(self):
+        array = DummyInt.array(3)([ord('X'), ord('y'), 0])
+        assert array.c_str == b'Xy'
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
         array = DummyInt.array(5)()
-        array.cstr = 'X\0y'
+        array.c_str = 'Xy\0z'
+        assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0]
+
+    def test_getUnicodeStr_onZeroTerminatedStr_returnsPyString(self):
+        array = DummyInt.array(3)([0x1234, 0x56, 0])
+        assert array.unicode_str == '\u1234\x56'
+
+    def test_setUnicodeStr_onPyStr_changesArrayToZeroTerminatedString(self):
+        array = DummyInt.array(5)()
+        array.unicode_str = '\u1234\x56\0\x78'
+        assert array.val == [0x1234, 0x56, 0, 0x78, 0]
+
+    def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
+        array = DummyInt.array(5)()
+        array.c_str = 'X\0y'
         assert array.val == [ord('X'), 0, ord('y'), 0, 0]
 
     def test_setCStr_onTooLongPyStr_raisesValueError(self):
         array = DummyInt.array(3)()
         with pytest.raises(ValueError):
-            array.cstr = 'Xyz'
+            array.c_str = 'Xyz'
 
     def test_getItem_returnsObjectAtNdx(self):
         array_obj = DummyShortInt.array(4)([1, 2, 3, 4])

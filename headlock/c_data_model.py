@@ -506,13 +506,23 @@ class CPointer(CObj):
             super()._set_val(pyobj)
 
     @property
-    def cstr(self):
+    def c_str(self):
         for terminator_pos in itertools.count():
             if self[terminator_pos] == 0:
-                return ''.join(chr(c) for c in self[:terminator_pos])
+                return bytes(self[:terminator_pos])
 
-    @cstr.setter
-    def cstr(self, new_val):
+    @c_str.setter
+    def c_str(self, new_val):
+        self.val = new_val
+
+    @property
+    def unicode_str(self):
+        for terminator_pos in itertools.count():
+            if self[terminator_pos] == 0:
+                return ''.join(map(chr, self[0:terminator_pos]))
+
+    @unicode_str.setter
+    def unicode_str(self, new_val):
         self.val = new_val
 
     def _cast_from(self, cobj):
@@ -664,15 +674,25 @@ class CArray(CObj):
             self[ndx2].val = self.base_type.null_val
 
     @property
-    def cstr(self):
+    def c_str(self):
         val = self.val
         terminator_pos = val.index(0)
-        return ''.join(chr(c) for c in val[0:terminator_pos])
+        return bytes(val[0:terminator_pos])
 
-    @cstr.setter
-    def cstr(self, new_val):
+    @c_str.setter
+    def c_str(self, new_val):
         if len(new_val) >= len(self):
             raise ValueError('string is too long')
+        self.val = new_val
+
+    @property
+    def unicode_str(self):
+        val = self.val
+        terminator_pos = val.index(0)
+        return ''.join(map(chr, self[0:terminator_pos]))
+
+    @unicode_str.setter
+    def unicode_str(self, new_val):
         self.val = new_val
 
     def __add__(self, other):
