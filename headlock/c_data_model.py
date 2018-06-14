@@ -74,6 +74,16 @@ class CObjType(type):
     def array(self, element_count):
         return CArray.typedef(self, element_count)
 
+    def alloc_array(self, initval):
+        if isinstance(initval, collections.abc.Iterable):
+            if not isinstance(initval, collections.abc.Collection):
+                initval = list(initval)
+            elif isinstance(initval, str):
+                initval = map_unicode_to_list(initval, self)
+            return self.array(len(initval))(initval)
+        else:
+            return self.array(initval)()
+
     @property
     def sizeof(self):
         return self._get_sizeof()
@@ -451,7 +461,7 @@ class CPointer(CObj):
             assert _depends_on_ is None
             if not isinstance(init_val, collections.Sequence):
                 init_val = list(init_val)
-            init_val = self.base_type.array(len(init_val))(init_val)
+            init_val = self.base_type.alloc_array(init_val)
         super(CPointer, self).__init__(init_val, _depends_on_)
 
     @classmethod

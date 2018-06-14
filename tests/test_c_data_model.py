@@ -1,5 +1,4 @@
 import ctypes as ct
-from unittest.mock import patch
 import collections
 import pytest
 import headlock.c_data_model
@@ -125,6 +124,12 @@ class DummyShortInt(headlock.c_data_model.CInt):
     bits = 16
     signed = False
     ctypes_type = ct.c_uint16
+
+
+class DummyByte(headlock.c_data_model.CInt):
+    bits = 8
+    signed = False
+    ctypes_type = ct.c_uint8
 
 
 class TestCInt:
@@ -436,7 +441,7 @@ class TestCPointer:
         assert DummyShortInt.ptr(int_ptr)._depends_on_ == int_obj
 
     def test_create_fromCArray_returnsCastedArray(self):
-        array = DummyShortInt.array(9)([0x1122, 0x3344])
+        array = DummyShortInt.alloc_array([0x1122, 0x3344])
         ptr = DummyInt.ptr(array)
         assert ptr.val == array.ptr.val
         assert ptr[0] == 0x33441122
@@ -466,20 +471,20 @@ class TestCPointer:
         assert ptr.val == ct.addressof(ctypes_int)
 
     def test_getUnicodeStr_onZeroTerminatedStr_returnsPyString(self):
-        array = DummyInt.array(3)([0x1234, 0x56, 0])
+        array = DummyInt.alloc_array([0x1234, 0x56, 0])
         assert array[0].ptr.unicode_str == '\u1234\x56'
 
     def test_setUnicodeStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt.array(5)()
+        array = DummyInt.alloc_array(5)
         array[0].ptr.unicode_str = '\u1234\x56\0\x78'
         assert array.val == [0x1234, 0x56, 0, 0x78, 0]
 
     def test_getCStr_onZeroTerminatedStr_returnsBytes(self):
-        array = DummyInt.array(3)([ord('X'), ord('y'), 0])
+        array = DummyInt.alloc_array([ord('X'), ord('y'), 0])
         assert array[0].ptr.c_str == b'Xy'
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt.array(5)()
+        array = DummyInt.alloc_array(5)
         array[0].ptr.c_str = b'Xy\0z'
         assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0]
 
@@ -504,7 +509,7 @@ class TestCPointer:
         assert ptr.val == 0
 
     def test_setVal_onCArray_setsAddressOfArray(self):
-        int_arr = DummyInt.array(3)()
+        int_arr = DummyInt.alloc_array(3)
         int_ptr = DummyInt.ptr()
         int_ptr.val = int_arr
         assert int_ptr.val == int_arr.ptr.val
@@ -512,13 +517,13 @@ class TestCPointer:
     @pytest.mark.parametrize('setval', [
         b'\x11\x22\x33', [0x11, 0x22, 0x33], iter([0x11, 0x22, 0x33])])
     def test_setVal_onIterable_fillsReferredElemsByIterable(self, setval):
-        int_arr = DummyInt.array(4)([0x99, 0x99, 0x99, 0x99])
+        int_arr = DummyInt.alloc_array([0x99, 0x99, 0x99, 0x99])
         int_ptr = int_arr[0].ptr
         int_ptr.val = setval
         assert int_arr.val == [0x11, 0x22, 0x33, 0x99]
 
     def test_setVal_fromUnicodeObject_fillsReferredElemsWithDecodedUnicodePlus0(self):
-        int_arr = DummyInt.array(3)([0x99, 0x99, 0x99])
+        int_arr = DummyInt.alloc_array([0x99, 0x99, 0x99])
         int_ptr = int_arr[0].ptr
         int_ptr.val = '\U00012345\u1234'
         assert int_arr == [0x12345, 0x1234, 0]
@@ -570,7 +575,7 @@ class TestCPointer:
         assert int_ptr.val - 200 == moved_intptr.val
 
     def test_sub_onCPointer_returnsNumberOfElementsInBetween(self):
-        obj_arr = DummyShortInt.array(3)()
+        obj_arr = DummyShortInt.alloc_array(3)
         adr0 = obj_arr[0].ptr
         adr2 = obj_arr[2].ptr
         assert adr2 - adr0 == 2
@@ -583,13 +588,13 @@ class TestCPointer:
             adr2 - adr1
 
     def test_sub_onCArray_returnsNumberOfElementsInBetween(self):
-        obj_arr = DummyShortInt.array(3)()
+        obj_arr = DummyShortInt.alloc_array(3)
         adr2 = obj_arr[2].ptr
         assert adr2 - obj_arr == 2
         assert isinstance(adr2 - obj_arr, int)
 
     def test_sub_onCPointerOfDifferrentType_raisesTypeError(self):
-        short_arr = DummyShortInt.array(3)()
+        short_arr = DummyShortInt.alloc_array(3)
         adr2 = DummyInt().ptr
         with pytest.raises(TypeError):
             adr2 - short_arr
@@ -600,12 +605,12 @@ class TestCPointer:
         assert moved_intptr.val == int_ptr.val - DummyInt.sizeof
 
     def test_getItem_onNdx_returnsCObjAtNdx(self):
-        array = DummyInt.array(3)([0x11, 0x22, 0x33])
+        array = DummyInt.alloc_array([0x11, 0x22, 0x33])
         ptr = DummyInt.ptr(array.ptr)
         assert ptr[1] == 0x22  and  ptr[2] == 0x33
 
     def test_getItem_onSlice_returnsCArrayOfCObjAtSlice(self):
-        array = DummyInt.array(4)([0x11, 0x22, 0x33, 0x44])
+        array = DummyInt.alloc_array([0x11, 0x22, 0x33, 0x44])
         ptr = DummyInt.ptr(array.ptr)
         part_array = ptr[1:3]
         assert type(part_array) == DummyInt.array(2)
@@ -666,10 +671,26 @@ class TestCPointer:
 
 class TestCArray:
 
-    def test_brackets_onIntType_returnsArraySubClass(self):
+    def test_array_onLength_returnsArraySubClassOfGivenSize(self):
         array_type = DummyInt.array(10)
         assert issubclass(array_type, headlock.c_data_model.CArray)
         assert array_type.base_type == DummyInt
+        assert array_type.element_count == 10
+
+    def test_allocArray_onLength_returnsArrayInstanceOfGivenSize(self):
+        array = DummyInt.alloc_array(3)
+        assert isinstance(array, headlock.c_data_model.CArray)
+        assert array == [0, 0, 0]
+
+    @pytest.mark.parametrize('initval', [[1, 2, 3, 4], b'\x01\x02\x03\x04',
+                                         iter([1, 2, 3, 4])])
+    def test_allocArray_onPyCollection_returnsArrayInstanceInitializedWithPyColl(self, initval):
+        array = DummyInt.alloc_array(initval)
+        assert array == [1, 2, 3, 4]
+
+    def test_allocArray_onPyStr_returnsArrayInstanceInitializedWithZeroTerminatedByStr(self):
+        array = DummyByte.alloc_array('Ab')
+        assert array.element_count > 2
 
     def test_create_fromCTypesObj_returnsWrapperAroundParam(self):
         ctype_array = (ct.c_int32 * 100)()
@@ -677,7 +698,7 @@ class TestCArray:
         assert array.ctypes_obj == ctype_array
 
     def test_create_fromNoParam_returnsDefaultEntries(self):
-        array = DummyInt.array(100)()
+        array = DummyInt.alloc_array(100)
         assert all(array.ctypes_obj[ndx] == 0 for ndx in range(100))
 
     def test_create_fromPyIterable_ok(self):
@@ -720,10 +741,6 @@ class TestCArray:
         assert array.val == [0x11, 0x00, 0x00]
 
     def test_setVal_onStringTo8BitArray_storesArrayElemUtf8Encoded(self):
-        class DummyByte(headlock.c_data_model.CInt):
-            bits = 8
-            signed = False
-            ctypes_type = ct.c_uint8
         array = DummyByte.array(9)()
         array.val = '\x11\u2233\U00014455'
         assert array.val == [0x11, 0xe2, 0x88, 0xb3, 0xf0, 0x94, 0x91, 0x95, 0]
