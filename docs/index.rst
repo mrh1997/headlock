@@ -1,25 +1,22 @@
-.. Headlock documentation master file, created by
-   sphinx-quickstart on Sun Dec 17 20:49:07 2017.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
+####################################
 Welcome to Headlock's documentation!
-====================================
+####################################
+
+``headlock`` is a python/C bridge with automatic binding generator and
+focus on testing C code from python. For a more complete feature summary
+refer to :ref:`About <about>`.
+
+ * Current Version: |release|
+ * PyPI: https://pypi.org/project/headlock
+ * Git Repository + Issuetracker: https://github.com/mrh1997/headlock
+ * Documentation: https://headlock.readthedocs.io
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
    :caption: Contents:
 
+   about
    getting-started
    user-manual
    reference-manual
    development-status
-
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
