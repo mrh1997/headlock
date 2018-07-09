@@ -28,11 +28,10 @@ Higher versions should work nevertheless.
 Installation
 ============
 
-The easiest way to install headlock is (as for most python package) to use pip.
-No matter if you want to install it into your system installation or a
-virtualenv you simply type::
+The easiest way to install headlock is from
+`PyPI <https://github.com/pypa/headlock>`_ via pip:
 
-   pip install git+https://github.com/mrh1997/headlock.git
+   pip install headlock
 
 
 Usage

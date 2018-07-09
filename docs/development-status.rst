@@ -1,4 +1,3 @@
-
 #############################
 Current Status Of Development
 #############################
@@ -28,3 +27,10 @@ is shown in the following list:
    * calling/mocking inline functions
  * Does not support running testsetups on
    external process / other machine / embdedded system
+
+
+Begreports/Pullrequests
+=======================
+
+Bugreports/Pullrequests can be provided via the page of
+`GitHub Page of the project <https://github.com/mrh1997/headlock>`_
