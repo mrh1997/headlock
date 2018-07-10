@@ -84,6 +84,10 @@ class CObjType(type):
         else:
             return self.array(initval)()
 
+    def alloc_ptr(self, initval):
+        return self.ptr(initval if isinstance(initval, collections.abc.Iterable)
+                        else [0] * initval)
+
     @property
     def sizeof(self):
         return self._get_sizeof()
@@ -1220,12 +1224,6 @@ class BuildInDefs:
         ctypes_type = ct.c_bool
 
     void = CVoid
-
-    # the following definitions are not builtin -> they should be removed
-
-    def __mem__(self, init, *args):
-        mem = ct.create_string_buffer(bytes(init), *args)
-        return self.void.ptr(ct.pointer(mem), _depends_on_=mem)
 
 
 # add names with '__' in front manually...

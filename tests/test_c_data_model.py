@@ -458,6 +458,20 @@ class TestCPointer:
         int_ptr = DummyInt.ptr('\U00012345\u1234')
         assert int_ptr[:3] == [0x12345, 0x1234, 0]
 
+    def test_allocPtr_onInt_returnsPtrToBufOfSpecifiedSize(self):
+        ptr = DummyInt.alloc_ptr(100)
+        assert isinstance(ptr, headlock.c_data_model.CPointer)
+        assert ptr.base_type is DummyInt
+        assert ptr[:100] == [0]*100
+
+    def test_allocPtr_returnCObjWithDependsOn(self):
+        ptr = DummyInt.alloc_ptr(100)
+        assert ptr._depends_on_ is not None
+
+    def test_allocPtr_onList_returnsPtrToBufWithSpecifiedInitVals(self):
+        ptr = DummyInt.alloc_ptr([0x11, 0x22, 0x33, 0x44])
+        assert ptr[:4] == [0x11, 0x22, 0x33, 0x44]
+
     def test_getAdr_onInt_returnsPointerObj(self):
         int_obj = DummyInt(999)
         int_ptr = int_obj.adr
@@ -1453,23 +1467,3 @@ class TestCVoid:
         int = DummyInt()
         void_ptr = headlock.c_data_model.CVoid.ptr(int.adr.val)
         assert void_ptr.ref.mem.max_size is None
-
-
-class TestBuildInDefs:
-
-    @pytest.fixture
-    def build_in_defs(self):
-        return headlock.c_data_model.BuildInDefs()
-
-    def test_mem_onInt_returnsPtrToBufOfSpecifiedSize(self, build_in_defs):
-        memory = build_in_defs.__mem__(100)
-        assert type(memory) == build_in_defs.void.ptr
-        assert memory.ref.mem[:100] == bytes.fromhex("00" * 100)
-
-    def test_mem_onBytes_returnsPtrToBufWithSpecifiedZeroTerminatedStr(self, build_in_defs):
-        memory = build_in_defs.__mem__(b"Test")
-        assert memory.ref.mem[:5] == b"Test\0"
-
-    def test_mem_returnCObjWithDependsOn(self, build_in_defs):
-        memory = build_in_defs.__mem__(1)
-        assert memory._depends_on_ is not None

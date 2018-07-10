@@ -164,33 +164,47 @@ and will be released automaticially when the python object is released.
 Apart of the instatiation of C Data Objects the following
 attributes/operators are available in the python class to simulate C operators:
 
-+---------------------------------------+-------------------------------+----------------------------------------+
-| Python Attribute/Operator             | C Operator                    | Description                            |
-+---------------------------------------+-------------------------------+----------------------------------------+
-| ``<type-proxy>.ptr``                  | ``typedef <type> * ...``      | Creates a pointer type that            |
-|                                       |                               | points to a <type> object              |
-+---------------------------------------+-------------------------------+----------------------------------------+
-| ``<type-proxy>.array(<size>)``        | ``typedef <type> ...[<size>]``| Creates an array type that             |
-|                                       |                               | refers to a C array of <type> object   |
-+---------------------------------------+-------------------------------+----------------------------------------+
-| * ``<type-proxy>.alloc_array(<size>)``| ``<type> ...[<size>]``        | Creates an array object proxy that     |
-| * ``<type-proxy>.alloc_array(<init>)``|                               | refers to a C array of <type> object.  |
-|                                       |                               | The created array object is either     |
-|                                       |                               | initialized with null_val's (if only   |
-|                                       |                               | the arrays size is specified), or it   |
-|                                       |                               | is initialized by the passed iterable. |
-|                                       |                               | In case an int is specified this is a  |
-|                                       |                               | shortcut for                           |
-|                                       |                               | ``t = <type-proxy>.array(<size>);``    |
-|                                       |                               | ``o = t()``.                           |
-|                                       |                               | In case an iterable is specified this  |
-|                                       |                               | is a shortcut for                      |
-|                                       |                               | ``t = <type-proxy>.array(len(<init>))``|
-|                                       |                               | ``o = t(<init>)``.                     |
-+---------------------------------------+-------------------------------+----------------------------------------+
-| ``<type proxy>.sizeof``               | ``sizeof(<type>)``            | returns the size of the Type           |
-|                                       |                               | proxy in bytes                         |
-+---------------------------------------+-------------------------------+----------------------------------------+
++---------------------------------------+----------------------------------+----------------------------------------+
+| Python Attribute/Operator             | C Operator                       | Description                            |
++---------------------------------------+----------------------------------+----------------------------------------+
+| ``<type-proxy>.ptr``                  | ``typedef <type> * ...``         | Creates a pointer type that            |
+|                                       |                                  | points to a <type> object              |
++---------------------------------------+----------------------------------+----------------------------------------+
+| ``<type-proxy>.array(<size>)``        | ``typedef <type> ...[<size>]``   | Creates an array type that             |
+|                                       |                                  | refers to a C array of <type> object   |
++---------------------------------------+----------------------------------+----------------------------------------+
+| ``<type-proxy>.alloc_array(<size>)``  | ``<type> ...[<size>]``           | Creates an array object proxy that     |
+|                                       |                                  | refers to a C array of <type> object.  |
+| ``<type-proxy>.alloc_array(<list>)``  |                                  | The created array object is either     |
+|                                       |                                  | initialized with null_val's (if only   |
+|                                       |                                  | the arrays size is specified), or it   |
+|                                       |                                  | is initialized by the passed iterable. |
+|                                       |                                  | In case an int is specified this is a  |
+|                                       |                                  | shortcut for                           |
+|                                       |                                  | ``t = <type-proxy>.array(<size>);``    |
+|                                       |                                  | ``o = t()``.                           |
+|                                       |                                  | In case an iterable is specified this  |
+|                                       |                                  | is a shortcut for                      |
+|                                       |                                  | ``t = <type-proxy>.array(len(<init>))``|
+|                                       |                                  | ``o = t(<list>)``.                     |
++---------------------------------------+----------------------------------+----------------------------------------+
+| ``<type-proxy>.alloc_ptr(<size>)``    | ``<type> * ... = malloc(<size>)``| This is analoguous to ``.alloc_array``.|
+|                                       |                                  | The only difference is, that it does   |
+| ``<type-proxy>.alloc_ptr(<list>)``    |                                  | not return the array object itself,    |
+|                                       |                                  | but a pointer to it.                   |
+|                                       |                                  |                                        |
+|                                       |                                  | This pointer object manages the arrays |
+|                                       |                                  | lifecycle, which means that the array  |
+|                                       |                                  | will be released automaticially when   |
+|                                       |                                  | the pointer is released.               |
+|                                       |                                  |                                        |
+|                                       |                                  | Usually this operator is used to       |
+|                                       |                                  | allocate a memorybuffer from within    |
+|                                       |                                  | python.                                |
++---------------------------------------+----------------------------------+----------------------------------------+
+| ``<type proxy>.sizeof``               | ``sizeof(<type>)``               | returns the size of the Type           |
+|                                       |                                  | proxy in bytes                         |
++---------------------------------------+----------------------------------+----------------------------------------+
 
 As described in chapter `The Testsetup`_ when creating a testsetup
 all custom C type objects representing the C types from the MUT will be added
