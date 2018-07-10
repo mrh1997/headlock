@@ -1223,8 +1223,6 @@ class BuildInDefs:
 
     # the following definitions are not builtin -> they should be removed
 
-    NULL = void.ptr(0)
-
     def __mem__(self, init, *args):
         mem = ct.create_string_buffer(bytes(init), *args)
         return self.void.ptr(ct.pointer(mem), _depends_on_=mem)
