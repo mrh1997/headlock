@@ -2,13 +2,17 @@
 # -*- coding: utf-8 -*-
 from distutils.core import setup
 from headlock import __version__
-import sys
+from pathlib import Path
+
+
+README_PATH = Path(__file__).parent / 'README.md'
+
 
 setup(
     name='headlock',
     version=__version__,
     description='An adapter for making C code testable from Python',
-    long_description=open('README.md').read(),
+    long_description=README_PATH.read_text(),
     long_description_content_type='text/markdown',
     author='Robert Hölzl',
     author_email='robert.hoelzl@posteo.de',
