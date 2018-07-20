@@ -191,12 +191,17 @@ attributes/operators are available in the python class to simulate C operators:
 | ``<type-proxy>.alloc_ptr(<size>)``    | ``<type> * ... = malloc(<size>)``| This is analoguous to ``.alloc_array``.|
 |                                       |                                  | The only difference is, that it does   |
 | ``<type-proxy>.alloc_ptr(<list>)``    |                                  | not return the array object itself,    |
-|                                       |                                  | but a pointer to it.                   |
+|                                       |                                  | but a pointer to it. Furthermore it    |
+|                                       |                                  | works on ``void``, in which case the   |
+|                                       |                                  | base element is one byte (thus         |
+|                                       |                                  | ``ts.void.alloc_ptr(3)`` will          |
+|                                       |                                  | return a ptr to a 3 byte buffer).      |
 |                                       |                                  |                                        |
-|                                       |                                  | This pointer object manages the arrays |
-|                                       |                                  | lifecycle, which means that the array  |
-|                                       |                                  | will be released automaticially when   |
-|                                       |                                  | the pointer is released.               |
+|                                       |                                  | The returned pointer object manages    |
+|                                       |                                  | the arrays lifecycle, which means that |
+|                                       |                                  | the array will be released             |
+|                                       |                                  | automaticially when the pointer        |
+|                                       |                                  | is released.                           |
 |                                       |                                  |                                        |
 |                                       |                                  | Usually this operator is used to       |
 |                                       |                                  | allocate a memorybuffer from within    |

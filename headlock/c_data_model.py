@@ -86,8 +86,8 @@ class CObjType(type):
             return self.array(initval)()
 
     def alloc_ptr(self, initval):
-        return self.ptr(initval if isinstance(initval, collections.abc.Iterable)
-                        else [0] * initval)
+        array = self.alloc_array(initval)
+        return self.ptr(array.adr, _depends_on_=array)
 
     @property
     def sizeof(self):
@@ -376,6 +376,11 @@ class CVoid(CObj):
         raise NotImplementedError('.sizeof does not work on void')
 
     @classmethod
+    def alloc_ptr(self, initval):
+        array = BuildInDefs.unsigned_char.alloc_array(initval)
+        return self.ptr(array.adr, _depends_on_=array)
+
+    @classmethod
     def c_definition(cls, refering_def=''):
         result = cls._decorate_c_definition('void')
         if refering_def:
@@ -449,13 +454,10 @@ class CPointer(CObj):
     def __init__(self, init_val=None, _depends_on_=None):
         if isinstance(init_val, collections.Iterable) \
                 and not isinstance(init_val, CObj) \
-                and not isinstance_ctypes(init_val):
-            if isinstance(init_val, str):
-                init_val = map_unicode_to_list(init_val, self.base_type)
+                and not isinstance_ctypes(init_val)\
+                and not isinstance(init_val, int):
             assert _depends_on_ is None
-            if not isinstance(init_val, collections.Sequence):
-                init_val = list(init_val)
-            init_val = self.base_type.alloc_array(init_val)
+            init_val = self.base_type.alloc_ptr(init_val)
         super(CPointer, self).__init__(init_val, _depends_on_)
 
     @classmethod

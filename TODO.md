@@ -1,8 +1,5 @@
 Interface changing
 ------------------
- * Replace ts.__mem__ can ts.void.alloc_ptr(3)
-   (does not work yet; furthermore the keywork "alloc" has to be
-   implemented for pointers: ts.void.ptr.alloc(10)
  * rework datamodel:
    - replace all proxies by a single class that refers to a memory
      location and a type object.

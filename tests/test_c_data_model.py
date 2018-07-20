@@ -1467,3 +1467,11 @@ class TestCVoid:
         int = DummyInt()
         void_ptr = headlock.c_data_model.CVoid.ptr(int.adr.val)
         assert void_ptr.ref.mem.max_size is None
+
+    def test_allocPtr_allocatesBytewise(self):
+        void_ptr = headlock.c_data_model.CVoid.alloc_ptr([1, 2, 3])
+        assert void_ptr.ref.mem == [1, 2, 3]
+
+    def test_ptr_onIterable_allocatesBlockBytewise(self):
+        void_ptr = headlock.c_data_model.CVoid.ptr([1, 2, 3])
+        assert void_ptr.ref.mem == [1, 2, 3]
