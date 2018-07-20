@@ -2,6 +2,7 @@ import ctypes as ct
 import itertools
 import sys
 import collections, collections.abc
+import functools
 
 
 class WriteProtectError(Exception):
@@ -111,6 +112,7 @@ class CObjType(type):
                      'c_name': parent.c_name or parent.__name__})
 
 
+@functools.total_ordering
 class CMemory:
 
     def __init__(self, addr, max_size=None, readonly=False):
@@ -175,22 +177,10 @@ class CMemory:
         return result + ')'
 
     def __eq__(self, other):
-        return self[:len(other)] == other
-
-    def __ne__(self, other):
-        return self[:len(other)] != other
+        return self[:len(other)] == bytes(other)
 
     def __gt__(self, other):
-        return self[:len(other)] > other
-
-    def __lt__(self, other):
-        return self[:len(other)] < other
-
-    def __ge__(self, other):
-        return self[:len(other)] >= other
-
-    def __le__(self, other):
-        return self[:len(other)] <= other
+        return self[:len(other)] > bytes(other)
 
 
 class CObj(metaclass=CObjType):
