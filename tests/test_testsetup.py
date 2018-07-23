@@ -277,6 +277,30 @@ class TestTestSetup(object):
         ts.__shutdown__.assert_called_once()
         assert not hasattr(ts, 'var')
 
+    def test_unload_calledTwice_ignoresSecondCall(self):
+        TS = self.cls_from_ccode(b'', 'unload_run_twice.c')
+        ts = TS()
+        ts.__unload__()
+        ts.__shutdown__ = Mock()
+        ts.__unload__()
+        ts.__shutdown__.assert_not_called()
+
+    @patch('headlock.testsetup.TestSetup.__load__')
+    @patch('headlock.testsetup.TestSetup.__unload__')
+    def test_del_doesImplicitShutdown(self, __unload__, __load__):
+        TS = self.cls_from_ccode(b'', 'unload_run_twice.c')
+        ts = TS()
+        __unload__.assert_not_called()
+        del ts
+        __unload__.assert_called()
+
+    @patch('headlock.testsetup.TestSetup.__load__')
+    @patch('headlock.testsetup.TestSetup.__unload__', side_effect=KeyError)
+    def test_del_onErrorDuringUnload_ignore(self, __unload__, __load__):
+        TS = self.cls_from_ccode(b'', 'unload_with_error_during_del.c')
+        ts = TS()
+        del ts
+
     def test_startup_doesAnImplicitLoad(self):
         TS = self.cls_from_ccode(b'', 'startup_calls_load.c')
         ts = TS()

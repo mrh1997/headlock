@@ -382,11 +382,11 @@ class TestSetup(BuildInDefs):
             event(*args)
 
     def __unload__(self):
-        self.__shutdown__()
-        for name in self.__globals:
-            delattr(self, name)
-        self._global_refs = dict()
         if self.__dll:
+            self.__shutdown__()
+            for name in self.__globals:
+                delattr(self, name)
+            self._global_refs = dict()
             ct.windll.kernel32.FreeLibrary(self.__dll._handle)
             self.__dll = None
 
@@ -396,6 +396,12 @@ class TestSetup(BuildInDefs):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.__unload__()
+
+    def __del__(self):
+        try:
+            self.__unload__()
+        except Exception:
+            pass
 
     def mock_fallback(self, funcname, *args):
         raise MethodNotMockedError(
