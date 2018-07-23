@@ -479,31 +479,30 @@ class TestTestSetup(object):
             assert ts.b.val == 2
 
     def test_registerUnloadEvent_onRegisteredEvent_isCalledOnUnload(self):
-        TSDummy = self.cls_from_ccode(b'', 'test1.c')
-        with TSDummy() as ts:
-            def on_unload():
-                calls.append('unloaded')
-            ts.register_unload_event(on_unload)
-            calls = []
-        assert calls == ['unloaded']
+        TSDummy = self.cls_from_ccode(b'', 'test_register_unload_ev.c')
+        ts = TSDummy()
+        on_unload = Mock()
+        ts.register_unload_event(on_unload)
+        ts.__shutdown__()
+        on_unload.assert_not_called()
+        ts.__unload__()
+        on_unload.assert_called_once()
 
     def test_registerUnloadEvent_onParams_arePassedWhenUnloaded(self):
         TSDummy = self.cls_from_ccode(b'', 'test2.c')
         with TSDummy() as ts:
-            def on_unload(p1, p2):
-                assert p1 == 'PARAM1' and p2 == 2
+            on_unload = Mock()
             ts.register_unload_event(on_unload, "PARAM1", 2)
+        on_unload.assert_called_with('PARAM1', 2)
 
     def test_registerUnloadEvent_onMultipleEvents_areCalledInReversedOrder(self):
         TSDummy = self.cls_from_ccode(b'', 'test3.c')
         with TSDummy() as ts:
-            def on_unload(p):
-                calls.append(p)
+            on_unload = Mock()
             ts.register_unload_event(on_unload, 1)
             ts.register_unload_event(on_unload, 2)
             ts.register_unload_event(on_unload, 3)
-            calls = []
-        assert calls == [3, 2, 1]
+        assert on_unload.call_args_list == [call(3), call(2), call(1)]
 
     def test_attributeAnnotationSupport_onStdIntIncluded_ok(self):
         TSDummy = self.cls_from_ccode(b'#include <stdint.h>\n'

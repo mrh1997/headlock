@@ -378,12 +378,13 @@ class TestSetup(BuildInDefs):
         self._global_refs_[name + '_mock'] = callback_func
 
     def __shutdown__(self):
-        for event, args in reversed(self.__unload_events):
-            event(*args)
+        pass
 
     def __unload__(self):
         if self.__dll:
             self.__shutdown__()
+            for event, args in reversed(self.__unload_events):
+                event(*args)
             for name in self.__globals:
                 delattr(self, name)
             self._global_refs = dict()
