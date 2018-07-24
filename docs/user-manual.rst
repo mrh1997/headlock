@@ -322,9 +322,9 @@ the testsetups environment/address space):
 
     from headlock.testsetup import TestSetup
 
-    with TestSetup() as ts:
-        ptr = ts.char.ptr(b'HELLO WELT\0')    # create buffer with HELLO WORLD
-        print(ptr.c_str)                      # print content of this buffer
+    ts = TestSetup()
+    ptr = ts.char.ptr(b'HELLO WELT\0')    # create buffer with HELLO WORLD
+    print(ptr.c_str)                      # print content of this buffer
 
 The decorator :meth:`headlock.testsetup.CModule` adds one or multiple
 Modules Under Tests (C-files) to a testsetup.
@@ -368,39 +368,46 @@ the python script is restarted):
     class TSSample(TestSetup):
         pass
 
-    with TSSample() as ts:
-        print(ts.mod1_var.c_str())   # content of module1's global var mod1_var
+    ts = TSSample()
+    print(ts.mod1_var.c_str())   # content of module1's global var mod1_var
+    ts.__unload__()    # this call is not needed but recommended
 
 In the above sample ``module1.c`` and ``../module2.c`` are compiled with
 the command line parameter "-DMACRO1=1" and "-DMACRO2". Please note that
 all C-file paths are relative to the directory of the python file of the
-XCside in a subdirectory of the
-corresponding C module via ``..``.
+testsetup. In this example the pyton file resides in a subdirectory of the
+corresponding C module (due to the directory prefix ``..``).
 
-Internally the contextmanager shown in these examples calls the methods
-:meth:`headlock.testsetup.TestSetup.__startup__` and
-:meth:`headlock.testsetup.TestSetup.__shutdown__`.
-:meth:`headlock.testsetup.TestSetup.__startup__` ensures that the binary
-is loaded and connected to the testsetup object while
-:meth:`headlock.testsetup.TestSetup.__shutdown__` deinitializes it and unloads
-the binary. Instead of the contextmanager these methods could be
-also ran manually before and after interacting with the testsetups
-variables/functions via the the `C/Python Proxy Objects`_ available as
-attributes of the testsetup..
+When the testsetup object is not needed any more it is recommended to run
+:meth:`headlock.testsetup.TestSetup.__unload__`.
+Although the ``__del__`` method will call the ``__unload__`` method implicitly,
+this is not a `guaranteed approch <https://docs.python.org/3.3/reference/datamodel.html#object.__del__>`_.
 
-These methods allow the testsetup to include its custom (de)initialization
-code by deriving the methods. But it has to be ensured that the parent
-classes implementation of these methods are called!
+For convenience it is possible to use the testsetup as contextmanager (which
+returns the testsetup object itself). This contextmanger ensures that the
+``__unload__`` method is called after the testsetup is not needed any more:
 
-Testsetup classes that want to run custom code specific initialization routines
-should override the ``__startup__``  method and add the required
-initialization code (Attention: do not forget to call the __startup__ method
-of the parent class before calling the C functions for initialization).
+.. code-block:: python
 
-.. note:: it is not possible to do C code related initialization stuff in
-    the regular ``__init__``, as in this stage the binary is not loaded.
-    Thus python proxies for the global C symbols are not yet usable!
+    with TSSample() as ts:
+        pass     # run some code with ts, no explicit ts.__unload__() required
 
+Testsetup derived classes that want to run custom code specific initialization
+routines should override the ``__startup__``  method and add the required
+initialization code (Attention: It is mandatory to call the ``__startup__``
+method of the parent class).
+By default this routine is called implicitly in the ``__init__`` routine of
+the testsetup. But it can be delayed by setting the keyword parameter
+``auto_startup`` to False. In the latter case the user has to run it
+later explicitly or use the testsetup as contextmanager in which case
+``__startup__`` will be called implicitly if not done yet. This allows to
+do test-case specific preparations of the testsetup object before
+initialize it.
+
+As ``__startup__`` can be used to add custom initialization code,
+``__shutdown__`` should be used to run custom deinitialization code. It will
+be called implicitly by ``__unload__`` if there was a call to ``__startup__``
+and the ``__shutdown__`` method was not called already before.
 
 .. note:: By convention testsetup classnames always start with the
     letters ``TS``.
@@ -600,7 +607,7 @@ semantic for methods. This means:
         class TSTest(UnderlyingModuleMock, TestSetup):
             pass
 
-        with TSTest() as ts:
-            ts.test_func_mock = Mock(return_value=99)
-            # call some funcs which in turn call test_func
-            ts.test_func_mock.assert_called_once_with(3, 4)
+        ts = TSTest()
+        ts.test_func_mock = Mock(return_value=99)
+        ts.c_func_that_calls_test_func()
+        ts.test_func_mock.assert_called_once_with(3, 4)

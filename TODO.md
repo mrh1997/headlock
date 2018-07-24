@@ -1,13 +1,12 @@
 Interface changing
 ------------------
+ * travis integration + pip deployment automatisieren bei tag
  * rework datamodel:
    - replace all proxies by a single class that refers to a memory
      location and a type object.
    - All methods of the proxies are forwarded to the C type specific
      type object.
    - the type object is "bound" to a "environment"
- * run __startup__ in __init__ instead of context (same with __shutdown__)
-   This allows much simpler demos.
 
 Small (can be done by occassion)
 --------------------------------

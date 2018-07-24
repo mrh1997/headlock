@@ -91,15 +91,19 @@ test if their result is correct::
    class TSSample(TestSetup):
        pass
 
-   with TSSample() as ts:   # within this context the C-code is loaded and can be called
-       # test increment():
-       assert ts.inc_by_one(10) == 11
+   ts = TSSample()
 
-       # test increment_inplace()
-       int_var = ts.int(10)
-       ts.increment_inplace(int_var.adr)
-       assert int_var == 11
+   # test increment():
+   assert ts.inc_by_one(10) == 11
 
-       # test increment_via_extfunc()
-       ts.external_adder = lambda ops: ops.op1 + ops.op2   # mock required func
-       assert ts.increment_via_extfunc(10) == 11
+   # test increment_inplace()
+   int_var = ts.int(10)
+   ts.increment_inplace(int_var.adr)
+   assert int_var == 11
+
+   # test increment_via_extfunc()
+   ts.external_adder = lambda ops: ops.op1 + ops.op2   # mock required func
+   assert ts.increment_via_extfunc(10) == 11
+
+   # this call is recommended (although it will be done implicitly otherwise)
+   ts.__unload__()

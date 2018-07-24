@@ -243,17 +243,38 @@ class TestTestSetup(object):
             assert ts.C is None
 
     def test_init_onValidSource_ok(self):
-        self.cls_from_ccode(b'/* valid C source code */', 'comment_only.c')
+        TS = self.cls_from_ccode(b'/* valid C source code */', 'comment_only.c')
+        ts = TS()
+        ts.__unload__()
+
+    @patch('headlock.testsetup.TestSetup.__unload__')
+    @patch('headlock.testsetup.TestSetup.__load__')
+    @patch('headlock.testsetup.TestSetup.__build__')
+    def test_init_callsBuild(self, __build__, __load__, __unload__):
+        TS = self.cls_from_ccode(b'', 'init_does_build.c')
+        ts = TS()
+        __build__.assert_called()
+
+    @patch('headlock.testsetup.TestSetup.__load__')
+    @patch('headlock.testsetup.TestSetup.__unload__')
+    def test_init_callsLoad(self, __unload__, __load__):
+        TS = self.cls_from_ccode(b'', 'init_calls_load.c')
+        ts = TS()
+        __load__.assert_called_once()
 
     @patch('headlock.testsetup.TestSetup.__startup__')
-    def test_init_providesBuildAndLoadedButNotStartedDll(self, __startup__):
-        TS = self.cls_from_ccode(b'int var;', 'init_calls_load.c')
+    def test_init_callsStartup(self, __startup__):
+        TS = self.cls_from_ccode(b'', 'init_on_autostartup.c')
         ts = TS()
-        try:
-            __startup__.assert_not_called()
-            assert hasattr(ts, 'var')
-        finally:
-            ts.__unload__()
+        __startup__.assert_called_once()
+        ts.__unload__()
+
+    @patch('headlock.testsetup.TestSetup.__startup__')
+    def test_init_onAutoStartupIsFalse_doesNotCallStartup(self, __startup__):
+        TS = self.cls_from_ccode(b'', 'init_on_no_autostartup.c')
+        ts = TS(auto_startup=False)
+        __startup__.assert_not_called()
+        ts.__unload__()
 
     def test_build_onPredefinedMacros_passesMacrosToCompiler(self):
         TSMock = self.cls_from_ccode(b'int a = A;\n'
@@ -269,13 +290,18 @@ class TestTestSetup(object):
             assert ts.c.val == 33
 
     @patch('headlock.testsetup.TestSetup.__shutdown__')
-    def test_unload_doesAnImplicitShutdown(self, __shutdown__):
+    def test_unload_onStarted_callsShutdown(self, __shutdown__):
         TS = self.cls_from_ccode(b'int var;', 'unload_calls_shutdown.c')
         ts = TS()
-        ts.__shutdown__.assert_not_called()
         ts.__unload__()
         ts.__shutdown__.assert_called_once()
-        assert not hasattr(ts, 'var')
+
+    @patch('headlock.testsetup.TestSetup.__shutdown__')
+    def test_unload_onNotStarted_doesNotCallsShutdown(self, __shutdown__):
+        TS = self.cls_from_ccode(b'int var;', 'unload_calls_shutdown.c')
+        ts = TS(auto_startup=False)
+        ts.__unload__()
+        ts.__shutdown__.assert_not_called()
 
     def test_unload_calledTwice_ignoresSecondCall(self):
         TS = self.cls_from_ccode(b'', 'unload_run_twice.c')
@@ -301,30 +327,29 @@ class TestTestSetup(object):
         ts = TS()
         del ts
 
-    def test_startup_doesAnImplicitLoad(self):
-        TS = self.cls_from_ccode(b'', 'startup_calls_load.c')
-        ts = TS()
-        ts.__load__ = Mock()
-        ts.__startup__()
-        ts.__load__.assert_called_once()
+    def test_enter_onNotStarted_callsStartup(self):
+        TSMock = self.cls_from_ccode(b'', 'contextmgr_on_enter.c')
+        ts = TSMock(auto_startup=False)
+        with patch.object(ts, '__startup__') as startup:
+            ts.__enter__()
+            startup.assert_called_once()
+        ts.__unload__()
 
-    def test_contextmgr_onCompilableCCode_callsStartupAndShutdown(self):
-        TSMock = self.cls_from_ccode(b'', 'contextmgr.c')
+    def test_enter_onAlreadyStarted_doesNotCallStartup(self):
+        TSMock = self.cls_from_ccode(b'', 'contextmgr_enter_on_started.c')
+        ts = TSMock(auto_startup=True)
+        with patch.object(ts, '__startup__') as startup:
+            ts.__enter__()
+            startup.assert_not_called()
+        ts.__unload__()
+
+    def test_exit_callsUnload(self):
+        TSMock = self.cls_from_ccode(b'', 'contextmgr_on_exit.c')
         ts = TSMock()
-        ts.__startup__ = Mock(side_effect=ts.__startup__)
-        ts.__shutdown__ = Mock(side_effect=ts.__shutdown__)
-        with ts as ts2:
-            assert ts is ts2
-            ts.__startup__.assert_called_once()
-            ts.__shutdown__.assert_not_called()
-        ts.__startup__.assert_called_once()
-        ts.__shutdown__.assert_called_once()
-
-    def test_contextmgr_onCompilableCCode_catchesExceptions(self):
-        TSMock = self.cls_from_ccode(b'', 'contextmgr_on_exception.c')
-        with pytest.raises(ValueError):
-            with TSMock() as ts:
-                raise ValueError();
+        ts.__enter__()
+        with patch.object(ts, '__unload__', wraps=ts.__unload__):
+            ts.__exit__(None, None, None)
+            ts.__unload__.assert_called_once()
 
     def test_funcWrapper_ok(self):
         TSMock = self.cls_from_ccode(b'int func(int a, int b) { return a+b; }',

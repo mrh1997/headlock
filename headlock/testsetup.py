@@ -272,15 +272,18 @@ class TestSetup(BuildInDefs):
         if cls.__ts_name__ is None:
             cls.__ts_name__ = transunit.abs_src_filename.stem
 
-    def __init__(self):
+    def __init__(self, *, auto_startup=True):
         super(TestSetup, self).__init__()
         self.__unload_events = []
         self._global_refs_ = {}
         self.__dll = None
+        self.__started = False
         if self._delayed_exc:
             raise self._delayed_exc
         self.__build__()
         self.__load__()
+        if auto_startup:
+            self.__startup__()
 
     @classmethod
     def __logger__(cls):
@@ -356,7 +359,7 @@ class TestSetup(BuildInDefs):
             raise
 
     def __startup__(self):
-        self.__load__()
+        self.__started = True
 
     def __setup_mock_callback(self, name, cfunc_type):
         self_weakref = weakref.ref(self)
@@ -378,11 +381,12 @@ class TestSetup(BuildInDefs):
         self._global_refs_[name + '_mock'] = callback_func
 
     def __shutdown__(self):
-        pass
+        self.__started = False
 
     def __unload__(self):
         if self.__dll:
-            self.__shutdown__()
+            if self.__started:
+                self.__shutdown__()
             for event, args in reversed(self.__unload_events):
                 event(*args)
             for name in self.__globals:
@@ -392,7 +396,8 @@ class TestSetup(BuildInDefs):
             self.__dll = None
 
     def __enter__(self):
-        self.__startup__()
+        if not self.__started:
+            self.__startup__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
