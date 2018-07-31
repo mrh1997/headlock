@@ -94,7 +94,7 @@ test if their result is correct::
    ts = TSSample()
 
    # test increment():
-   assert ts.inc_by_one(10) == 11
+   assert ts.increment(10) == 11
 
    # test increment_inplace()
    int_var = ts.int(10)
@@ -102,7 +102,7 @@ test if their result is correct::
    assert int_var == 11
 
    # test increment_via_extfunc()
-   ts.external_adder = lambda ops: ops.op1 + ops.op2   # mock required func
+   ts.adder_mock = lambda ops: ops.op1 + ops.op2   # mock required func
    assert ts.increment_via_extfunc(10) == 11
 
    # this call is recommended (although it will be done implicitly otherwise)

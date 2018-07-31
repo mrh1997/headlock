@@ -37,7 +37,7 @@ is shown in the following list:
    external process / other machine / embdedded system
 
 
-Begreports/Pullrequests
+Bugreports/Pullrequests
 =======================
 
 Bugreports/Pullrequests can be provided via the page of
