@@ -4,6 +4,12 @@
 Current Status Of Development
 #############################
 
+.. image:: https://readthedocs.org/projects/headlock/badge/?version=stable
+   :alt: Documentation Generation Status
+
+..
+    image:: https://api.travis-ci.com/mrh1997/headlock.svg?branch=master
+   :target: https://travis-ci.com/mrh1997/headlock
 
 .. attention::
     The currently implementation of headlock is an alpha version.

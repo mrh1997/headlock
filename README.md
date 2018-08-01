@@ -1,4 +1,9 @@
-# About
+# Headlock - Python/C Bridge for Unittesting
+
+<!-- [![buildstate](https://api.travis-ci.com/mrh1997/headlock.svg?branch=master "Build State")](https://travis-ci.com/mrh1997/headlock) -->
+[![docstate](https://readthedocs.org/projects/headlock/badge/?version=latest "Documentation Generation State")](https://headlock.readthedocs.io/en/latest/)
+
+## About
 
 This is an adapter for testing C code via tests written in python.
 When being combined i.e. with pytest it provides a very powerful and
@@ -39,7 +44,7 @@ Explicitly Non-Goals Are:
  - Python < 3.6 will never be supported
 
 
-# Sample
+## Sample
 
 This piece of C-code contains a macros, a struct a function
 implementation and a function that is relying on
@@ -92,7 +97,7 @@ This demonstrates how:
    ```underlying_func``` in this case). It is even possible to
    dynamicially replace mocks (i.e. by unittest.mock.Mock())
 
-# Status
+## Status
 
 Currently this is alpha.
 
