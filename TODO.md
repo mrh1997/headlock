@@ -1,5 +1,6 @@
 Interface changing
 ------------------
+ * implicit add zero element to .alloc_ptr(...) and .ptr on iterables
  * travis integration + pip deployment automatisieren bei tag
  * rework datamodel:
    - replace all proxies by a single class that refers to a memory

@@ -510,6 +510,8 @@ class CPointer(CObj):
                 and not isinstance(pyobj, CObj):
             if isinstance(pyobj, str):
                 pyobj = map_unicode_to_list(pyobj, self.base_type)
+            elif isinstance(pyobj, (bytes, bytearray)):
+                pyobj += b'\0'
             for ndx, item in enumerate(pyobj):
                 self[ndx].val = item
         else:

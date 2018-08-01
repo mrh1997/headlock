@@ -485,22 +485,22 @@ class TestCPointer:
         assert ptr.val == ct.addressof(ctypes_int)
 
     def test_getUnicodeStr_onZeroTerminatedStr_returnsPyString(self):
-        array = DummyInt.alloc_array([0x1234, 0x56, 0])
-        assert array[0].adr.unicode_str == '\u1234\x56'
+        ptr = DummyInt.alloc_ptr([0x1234, 0x56, 0])
+        assert ptr.unicode_str == '\u1234\x56'
 
     def test_setUnicodeStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt.alloc_array(5)
-        array[0].adr.unicode_str = '\u1234\x56\0\x78'
-        assert array.val == [0x1234, 0x56, 0, 0x78, 0]
+        ptr = DummyInt.alloc_ptr([111] * 6)
+        ptr.unicode_str = '\u1234\x56\0\x78'
+        assert ptr[:6] == [0x1234, 0x56, 0, 0x78, 0, 111]
 
     def test_getCStr_onZeroTerminatedStr_returnsBytes(self):
-        array = DummyInt.alloc_array([ord('X'), ord('y'), 0])
-        assert array[0].adr.c_str == b'Xy'
+        ptr = DummyInt.alloc_ptr([ord('X'), ord('y'), 0])
+        assert ptr.c_str == b'Xy'
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt.alloc_array(5)
-        array[0].adr.c_str = b'Xy\0z'
-        assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0]
+        ptr = DummyInt.alloc_ptr([111] * 6)
+        ptr.c_str = b'Xy\0z'
+        assert ptr[:6] == [ord('X'), ord('y'), 0, ord('z'), 0, 111]
 
     def test_int_returnsAddress(self):
         ctypes_int = ct.c_int32()
@@ -529,7 +529,7 @@ class TestCPointer:
         assert int_ptr.val == int_arr.adr.val
 
     @pytest.mark.parametrize('setval', [
-        b'\x11\x22\x33', [0x11, 0x22, 0x33], iter([0x11, 0x22, 0x33])])
+        [0x11, 0x22, 0x33], iter([0x11, 0x22, 0x33])])
     def test_setVal_onIterable_fillsReferredElemsByIterable(self, setval):
         int_arr = DummyInt.alloc_array([0x99, 0x99, 0x99, 0x99])
         int_ptr = int_arr[0].adr
@@ -778,21 +778,21 @@ class TestCArray:
         assert array.c_str == b'Xy'
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt.array(5)()
+        array = DummyInt.alloc_array([111] * 6)
         array.c_str = 'Xy\0z'
-        assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0]
+        assert array.val == [ord('X'), ord('y'), 0, ord('z'), 0, 0]
 
     def test_getUnicodeStr_onZeroTerminatedStr_returnsPyString(self):
-        array = DummyInt.array(3)([0x1234, 0x56, 0])
+        array = DummyInt.alloc_array([0x1234, 0x56, 0])
         assert array.unicode_str == '\u1234\x56'
 
     def test_setUnicodeStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt.array(5)()
+        array = DummyInt.alloc_array([111] * 6)
         array.unicode_str = '\u1234\x56\0\x78'
-        assert array.val == [0x1234, 0x56, 0, 0x78, 0]
+        assert array.val == [0x1234, 0x56, 0, 0x78, 0, 0]
 
     def test_setCStr_onPyStr_changesArrayToZeroTerminatedString(self):
-        array = DummyInt.array(5)()
+        array = DummyInt.alloc_array([111] * 5)
         array.c_str = 'X\0y'
         assert array.val == [ord('X'), 0, ord('y'), 0, 0]
 
