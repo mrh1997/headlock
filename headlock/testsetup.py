@@ -272,7 +272,7 @@ class TestSetup(BuildInDefs):
         if cls.__ts_name__ is None:
             cls.__ts_name__ = transunit.abs_src_filename.stem
 
-    def __init__(self, *, auto_startup=True):
+    def __init__(self):
         super(TestSetup, self).__init__()
         self.__unload_events = []
         self._global_refs_ = {}
@@ -282,8 +282,6 @@ class TestSetup(BuildInDefs):
             raise self._delayed_exc
         self.__build__()
         self.__load__()
-        if auto_startup:
-            self.__startup__()
 
     @classmethod
     def __logger__(cls):

@@ -263,16 +263,9 @@ class TestTestSetup(object):
         __load__.assert_called_once()
 
     @patch('headlock.testsetup.TestSetup.__startup__')
-    def test_init_callsStartup(self, __startup__):
-        TS = self.cls_from_ccode(b'', 'init_on_autostartup.c')
+    def test_init_doesNotCallStartup(self, __startup__):
+        TS = self.cls_from_ccode(b'', 'init_on_nostartup.c')
         ts = TS()
-        __startup__.assert_called_once()
-        ts.__unload__()
-
-    @patch('headlock.testsetup.TestSetup.__startup__')
-    def test_init_onAutoStartupIsFalse_doesNotCallStartup(self, __startup__):
-        TS = self.cls_from_ccode(b'', 'init_on_no_autostartup.c')
-        ts = TS(auto_startup=False)
         __startup__.assert_not_called()
         ts.__unload__()
 
@@ -293,13 +286,14 @@ class TestTestSetup(object):
     def test_unload_onStarted_callsShutdown(self, __shutdown__):
         TS = self.cls_from_ccode(b'int var;', 'unload_calls_shutdown.c')
         ts = TS()
+        ts.__startup__()
         ts.__unload__()
         ts.__shutdown__.assert_called_once()
 
     @patch('headlock.testsetup.TestSetup.__shutdown__')
     def test_unload_onNotStarted_doesNotCallsShutdown(self, __shutdown__):
         TS = self.cls_from_ccode(b'int var;', 'unload_calls_shutdown.c')
-        ts = TS(auto_startup=False)
+        ts = TS()
         ts.__unload__()
         ts.__shutdown__.assert_not_called()
 
@@ -329,7 +323,7 @@ class TestTestSetup(object):
 
     def test_enter_onNotStarted_callsStartup(self):
         TSMock = self.cls_from_ccode(b'', 'contextmgr_on_enter.c')
-        ts = TSMock(auto_startup=False)
+        ts = TSMock()
         with patch.object(ts, '__startup__') as startup:
             ts.__enter__()
             startup.assert_called_once()
@@ -337,7 +331,8 @@ class TestTestSetup(object):
 
     def test_enter_onAlreadyStarted_doesNotCallStartup(self):
         TSMock = self.cls_from_ccode(b'', 'contextmgr_enter_on_started.c')
-        ts = TSMock(auto_startup=True)
+        ts = TSMock()
+        ts.__startup__()
         with patch.object(ts, '__startup__') as startup:
             ts.__enter__()
             startup.assert_not_called()

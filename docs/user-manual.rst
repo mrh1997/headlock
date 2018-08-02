@@ -263,6 +263,9 @@ attributes/operators are available in the python proxy to simulate C operators:
 +------------------------------------+-----------------------+----------------------------------------+
 | ``<proxy>.sizeof``                 | ``sizeof(<var)``      | returns the size of the Object         |
 |                                    |                       | proxy in bytes                         |
++---------------------------------------+----------------------------------+--------------------------+
+| ``<ctype-proxy>(<proxy>)``         | ``<ctype>(<cobj>)``   | casts a object to another type by      |
+|                                    |                       | creating a new one.                    |
 +------------------------------------+-----------------------+----------------------------------------+
 
 
@@ -380,34 +383,32 @@ corresponding C module (due to the directory prefix ``..``).
 
 When the testsetup object is not needed any more it is recommended to run
 :meth:`headlock.testsetup.TestSetup.__unload__`.
-Although the ``__del__`` method will call the ``__unload__`` method implicitly,
+Although the ``__del__()`` method will call the ``__unload__()`` method implicitly,
 this is not a `guaranteed approch <https://docs.python.org/3.3/reference/datamodel.html#object.__del__>`_.
 
+Testsetup derived classes that want to run initialization
+routines that are relying on C code/mocks should **not** run this code
+in the ``__init__()`` method but use the ``__startup__()`` method for this
+purpose. This ensures that
+
+- the testsetup is *comletely* initialized when the first C routine is called.
+- running the initialization routines can be separated/delayed on demand
+
+As ``__startup__()`` can be used to add custom initialization code,
+``__shutdown__()`` should be used to run custom deinitialization code. It will
+be called implicitly by ``__unload__()`` if there was a call to
+``__startup__()`` and the ``__shutdown__()`` method was not called
+already before.
+
 For convenience it is possible to use the testsetup as contextmanager (which
-returns the testsetup object itself). This contextmanger ensures that the
-``__unload__`` method is called after the testsetup is not needed any more:
+returns the testsetup object itself). This contextmanger ensures that
+``__startup__()`` is called at the beginning of the context
+(if not called already) and ``__unload__()`` at the end:
 
 .. code-block:: python
 
     with TSSample() as ts:
-        pass     # run some code with ts, no explicit ts.__unload__() required
-
-Testsetup derived classes that want to run custom code specific initialization
-routines should override the ``__startup__``  method and add the required
-initialization code (Attention: It is mandatory to call the ``__startup__``
-method of the parent class).
-By default this routine is called implicitly in the ``__init__`` routine of
-the testsetup. But it can be delayed by setting the keyword parameter
-``auto_startup`` to False. In the latter case the user has to run it
-later explicitly or use the testsetup as contextmanager in which case
-``__startup__`` will be called implicitly if not done yet. This allows to
-do test-case specific preparations of the testsetup object before
-initialize it.
-
-As ``__startup__`` can be used to add custom initialization code,
-``__shutdown__`` should be used to run custom deinitialization code. It will
-be called implicitly by ``__unload__`` if there was a call to ``__startup__``
-and the ``__shutdown__`` method was not called already before.
+        # ts __startup__ was called and __unload__ will be called
 
 .. note:: By convention testsetup classnames always start with the
     letters ``TS``.
