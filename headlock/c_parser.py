@@ -7,7 +7,8 @@ from typing import Dict, List, Any, ByteString, Union
 
 from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
     TranslationUnit, Config, TranslationUnitLoadError, Cursor, Type
-from .c_data_model import BuildInDefs, CObjType, CFunc, CStruct, CEnum, CVector
+from .c_data_model import BuildInDefs, CObjType, CFuncType, CStructType, \
+    CUnionType, CEnumType, CVectorType, CStruct, CUnion, CEnum
 
 
 Config.set_library_path(os.environ.get('LLVM_DIR', r'C:\Program Files (x86)\LLVM\bin'))
@@ -200,6 +201,7 @@ class CParser:
     def __init__(self, predef_macros:Dict[str, Any]=None,
                  include_dirs:List[Path]=None,
                  sys_include_dirs:List[Path]=None,
+                 sys_whitelist:List[str]=None,
                  target_compiler:str=None):
         super().__init__()
         self.__resolve_cache:Dict[str, Path] = {}
@@ -207,6 +209,7 @@ class CParser:
         self.__sys_typedefs:Dict[str, Type] = {}
         self.include_dirs = list(map(self.resolve, include_dirs or []))
         self.sys_include_dirs = list(map(self.resolve, sys_include_dirs or []))
+        self.sys_whitelist = frozenset(sys_whitelist or [])
         self.predef_macros = predef_macros.copy() if predef_macros else {}
         annotate = '__attribute__((annotate("{}")))'.format
         self.predef_macros.update(
@@ -227,33 +230,36 @@ class CParser:
         self.source_files = set()
         self.target_compiler = target_compiler
 
-    def convert_struct_from_cursor(self, struct_crs:Type):
+    def convert_compount_from_cursor(self, cmpnd_crs:Type) \
+            -> Union[CStruct, CUnion]:
         try:
-            struct_type = self.structs[struct_crs.displayname]
+            struct_type = self.structs[cmpnd_crs.displayname]
         except KeyError:
-            struct_type = CStruct.typedef(struct_crs.displayname,
-                                          packing=self.DEFAULT_PACKING)
-            self.structs[struct_type.__name__] = struct_type
+            pytype = (CStructType if cmpnd_crs.kind == CursorKind.STRUCT_DECL
+                      else CUnionType)
+            struct_type = pytype(cmpnd_crs.displayname,
+                                    packing=self.DEFAULT_PACKING)
+            self.structs[struct_type.struct_name] = struct_type
         else:
-            if len(struct_type._members_) > 0:
+            if struct_type._members_:
                 return struct_type
 
         members = []
-        for member_cursor in struct_crs.get_children():
+        for member_cursor in cmpnd_crs.get_children():
             if member_cursor.kind == CursorKind.FIELD_DECL:
                 member_type = self.convert_type_from_cursor(member_cursor.type)
                 members.append( (member_cursor.displayname, member_type) )
             else:
                 self.convert_datatype_decl_from_cursor(member_cursor)
-        if members:
-            struct_type.delayed_def(*members)
+        if members or struct_type._members_ is None:
+            struct_type.delayed_def(members)
         return struct_type
 
     def convert_enum_from_cursor(self, enum_crs:Type) -> CEnum:
         try:
             enum_type = self.structs[enum_crs.displayname]
         except KeyError:
-            enum_type = CEnum
+            enum_type = CEnumType(enum_crs.displayname)
             if enum_crs.displayname:
                 self.structs[enum_crs.displayname] = enum_type
         return enum_type
@@ -262,11 +268,11 @@ class CParser:
             -> Union[CStruct, CEnum]:
         if cursor.displayname:
             if cursor.kind == CursorKind.STRUCT_DECL:
-                return self.convert_struct_from_cursor(cursor)
+                return self.convert_compount_from_cursor(cursor)
             elif cursor.kind == CursorKind.ENUM_DECL:
                 return self.convert_enum_from_cursor(cursor)
             elif cursor.kind == CursorKind.UNION_DECL:
-                return self.convert_struct_from_cursor(cursor)
+                return self.convert_compount_from_cursor(cursor)
 
     def convert_type_from_cursor(self, type_crs:Type):
         def is_function_proto(cursor):
@@ -284,11 +290,11 @@ class CParser:
             element_type = self.convert_type_from_cursor(type_crs.element_type)
             res = element_type.array(0)
         elif type_crs.kind == TypeKind.RECORD:
-            res = self.convert_struct_from_cursor(type_crs.get_declaration())
+            res = self.convert_compount_from_cursor(type_crs.get_declaration())
         elif type_crs.kind == TypeKind.ENUM:
             res = self.convert_enum_from_cursor(type_crs.get_declaration())
         elif type_crs.kind == TypeKind.VECTOR:
-            res = CVector
+            res = CVectorType()
         elif is_function_proto(type_crs) and type_crs.kind != TypeKind.TYPEDEF:
             if type_crs.get_result().kind == TypeKind.VOID:
                 ret_objtype = None
@@ -297,7 +303,7 @@ class CParser:
                     type_crs.get_result())
             arg_cobjtypes = [self.convert_type_from_cursor(param)
                              for param in type_crs.argument_types()]
-            res = CFunc.typedef(*arg_cobjtypes, returns=ret_objtype)
+            res = CFuncType(ret_objtype, arg_cobjtypes)
         elif type_crs.kind == TypeKind.ELABORATED:
             decl_cursor = type_crs.get_declaration()
             struct_name = decl_cursor.displayname
@@ -337,7 +343,8 @@ class CParser:
 
         for sub_cursor in cursor.get_children():
             start = sub_cursor.extent.start
-            if start.file and self.is_sys_hdr(start.file.name):
+            if start.file and self.is_sys_hdr(start.file.name) \
+                    and sub_cursor.spelling not in self.sys_whitelist:
                 if sub_cursor.kind == CursorKind.TYPEDEF_DECL:
                     self.__sys_typedefs[sub_cursor.displayname] = \
                                               sub_cursor.underlying_typedef_type
@@ -356,7 +363,7 @@ class CParser:
                     cobj_type = self.convert_type_from_cursor(sub_cursor.type)
                     if has_attr(sub_cursor, CursorKind.ANNOTATE_ATTR,
                                 self.CDECL_ATTR_TEXT):
-                        cobj_type = cobj_type.with_attr('cdecl')
+                        cobj_type = cobj_type.with_attr('__cdecl')
                     self.funcs[sub_cursor.spelling] = cobj_type
                     if any(c.kind == CursorKind.COMPOUND_STMT
                            for c in sub_cursor.get_children()):

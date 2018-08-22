@@ -8,7 +8,7 @@ import pytest
 from .helpers import build_tree
 from headlock.testsetup import TestSetup, MethodNotMockedError, \
     BuildError, CompileError, CModuleDecoratorBase, CModule, TransUnit
-from headlock.c_data_model import CStruct, CEnum, CInt
+from headlock.c_data_model import CStructType, CEnumType, CIntType
 
 
 @pytest.fixture
@@ -492,12 +492,12 @@ class TestTestSetup(object):
     def test_typedefWrapper_storesTypeDefInTypedefCls(self):
         TSMock = self.cls_from_ccode(b'typedef int td_t;', 'typedef.c')
         with TSMock() as ts:
-            assert issubclass(ts.td_t, CInt)
+            assert ts.td_t == ts.int
 
     def test_structWrapper_storesStructDefInStructCls(self):
         TSMock = self.cls_from_ccode(b'struct strct_t { };', 'struct.c')
         with TSMock() as ts:
-            assert issubclass(ts.struct.strct_t, CStruct)
+            assert isinstance(ts.struct.strct_t, CStructType)
 
     def test_structWrapper_onContainedStruct_ensuresContainedStructDeclaredFirst(self):
         TSMock = self.cls_from_ccode(
@@ -522,16 +522,23 @@ class TestTestSetup(object):
             'inorder_ptr_structs.c')
         with TSMock(): pass
 
+    def test_structWrapper_onGlobalVarFromStruct_ok(self):
+        TSMock = self.cls_from_ccode(b'struct strct { int a; };\n'
+                                     b'struct strct var;',
+                                     'global_var_from_structs.c')
+        with TSMock() as ts:
+            assert ts.var.cobj_type == ts.struct.strct
+
     def test_structWrapper_onAnonymousStruct_ok(self):
         TSMock = self.cls_from_ccode(b'struct { int a; } var;',
                                      'anonymous_structs.c')
         with TSMock() as ts:
-            assert type(ts.var) == list(ts.struct.__dict__.values())[0]
+            assert [ts.var.cobj_type] == list(ts.struct.__dict__.values())
 
     def test_enumWrapper_storesEnumDefInEnumCls(self):
         TSMock = self.cls_from_ccode(b'enum enum_t { a };', 'enum.c')
         with TSMock() as ts:
-            assert issubclass(ts.enum.enum_t, CEnum)
+            assert isinstance(ts.enum.enum_t, CEnumType)
 
     def test_onTestSetupComposedOfDifferentCModules_parseAndCompileCModulesIndependently(self):
         class TSDummy(TestSetup): pass
@@ -603,7 +610,7 @@ class TestTestSetup(object):
                                       b'int __cdecl cdecl_func(void);',
                                       'attr_annotation_support.c')
         with TSDummy() as ts:
-            assert 'cdecl' in ts.cdecl_func.c_attributes
+            assert '__cdecl' in ts.cdecl_func.cobj_type.c_attributes
 
     def test_subclassing_addsAttributesToDerivedClassButDoesNotModifyParentClass(self):
         TSDummy = self.cls_from_ccode(b'int func(void);\n'

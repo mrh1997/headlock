@@ -7,8 +7,9 @@ import pytest
 from .helpers import build_tree
 from headlock.libclang.cindex import TranslationUnit
 from headlock.c_parser import CParser, MacroDef, ParseError
-from headlock.c_data_model import BuildInDefs as bd, CFunc, CStruct, CEnum, \
-    CUnion, CVector
+from headlock.c_data_model import BuildInDefs as bd, CFuncType, CStructType, \
+    CEnumType, CUnionType, CVectorType
+import os
 
 
 class TestParserError:
@@ -339,46 +340,46 @@ class TestCParser:
         self.assert_parses_as_type('int (* x)[]', bd.int.array(0).ptr)
 
     def test_convertTypeFromCursor_onSimpleFuncPtr_ok(self):
-        self.assert_parses_as_type('void (*x)()', CFunc.typedef().ptr)
+        self.assert_parses_as_type('void (*x)()', CFuncType().ptr)
 
     def test_convertTypeFromCursor_onFuncPtrWithVoidParam_ok(self):
-        self.assert_parses_as_type('void (*x)(void)', CFunc.typedef().ptr)
+        self.assert_parses_as_type('void (*x)(void)', CFuncType().ptr)
 
     def test_convertTypeFromCursor_onFuncPtrWithMultiplePtrs_ok(self):
         self.assert_parses_as_type('void (*x)(int a, char)',
-                                   CFunc.typedef(bd.int, bd.char).ptr)
+                                   CFuncType(None, [bd.int, bd.char]).ptr)
 
     def test_convertTypeFromCursor_onFuncPtrWithNonVoidResult_ok(self):
         self.assert_parses_as_type('int (*x)()',
-                                   CFunc.typedef(returns=bd.int).ptr)
+                                   CFuncType(bd.int).ptr)
 
     def test_convertTypeFromCursor_onFuncPtrPtr_ok(self):
         self.assert_parses_as_type('int (**x)()',
-                                   CFunc.typedef(returns=bd.int).ptr.ptr)
+                                   CFuncType(bd.int).ptr.ptr)
 
     def test_readFromCursor_onStaticVarDef_ignoresDef(self):
         self.assert_parses('static int varname;')
 
     def test_readFromCursor_onStructEmptyDef_ok(self):
-        struct_def = CStruct.typedef('strctname')
+        struct_def = CStructType('strctname', [])
         self.assert_parses('struct strctname {};',
                            exp_structs={'strctname': struct_def})
 
     def test_readFromCursor_onStructWithMembersDef_ok(self):
-        struct_def = CStruct.typedef(
-            'strctname', ('a', bd.int), ('b', bd.char), ('c', bd.char))
+        struct_def = CStructType(
+            'strctname', [('a', bd.int), ('b', bd.char), ('c', bd.char)])
         self.assert_parses('struct strctname { int a; char b, c; };',
                            exp_structs={'strctname': struct_def})
 
     def test_readFromCursor_onAnonymousStructInTypeDef_ok(self):
-        struct_def = CStruct.typedef(None, ('a', bd.int))
+        struct_def = CStructType(None, [('a', bd.int)])
         self.assert_parses('typedef struct strctname { int a; } typename;',
                            exp_structs={'strctname': struct_def},
                            exp_typedefs={'typename': struct_def})
 
     @patch('headlock.c_parser.CParser.DEFAULT_PACKING', new=16)
     def test_readFromCursor_onCustomDefaultPacking_createsStructWithModifiedPacking(self):
-        struct_def = CStruct.typedef('strctname', ('a', bd.int), packing=16)
+        struct_def = CStructType('strctname', [('a', bd.int)], packing=16)
         self.assert_parses('typedef struct strctname { int a; } typename;',
                            exp_structs={'strctname': struct_def},
                            exp_typedefs={'typename': struct_def})
@@ -386,74 +387,74 @@ class TestCParser:
     def test_readFromCursor_onBitField_isReadAsStruct(self):
         # this is not correct, but required as temporary solution to keep
         # code with bitfields parsable.
-        struct_def = CStruct.typedef(
-            'strctname', ('a', bd.int), ('b', bd.int))
+        struct_def = CStructType(
+            'strctname', [('a', bd.int), ('b', bd.int)])
         self.assert_parses('struct strctname { int a:10; int b:20; };',
                            exp_structs={'strctname': struct_def})
 
     def test_readFromCursor_onBitFieldWithUnnamedMember_isRead(self):
         # this is not correct, but required as temporary solution to keep
         # code with bitfields parsable.
-        struct_def = CStruct.typedef(
-            'strctname', ('', bd.int), ('a', bd.int), ('', bd.int))
+        struct_def = CStructType(
+            'strctname', [('', bd.int), ('a', bd.int), ('', bd.int)])
         self.assert_parses('struct strctname { int:1; int a:1; int:1; };',
                            exp_structs={'strctname': struct_def})
 
     def test_readFromCursor_onVarDefOfTypeStruct_ok(self):
-        struct_def = CStruct.typedef('structname')
+        struct_def = CStructType('structname', [])
         self.assert_parses('struct strctname { };'
                            'extern struct strctname varname;',
                            exp_structs={'strctname': struct_def},
                            exp_vars={'varname': struct_def})
 
     def test_readFromCursor_onUnionDef_addsUnionToNameSpace(self):
-        union_def = CUnion.typedef('unionname')
+        union_def = CUnionType('unionname', [])
         self.assert_parses('union unionname { };'
                            'extern union unionname varname;',
                            exp_structs={'unionname': union_def},
                            exp_vars={'varname': union_def})
 
     def test_readFromCursor_onVectorDef_addsVectorToNameSpace(self):
-        vect_def = CVector
+        vect_def = CVectorType()
         self.assert_parses('extern int vectorname '
                            '__attribute__((__vector_size__(8),__may_alias__));',
                            exp_vars={'vectorname': vect_def})
 
     def test_readFromCursor_onVarDefOfAnonymousStruct_ok(self):
-        struct_def = CStruct.typedef(None, ('a', bd.int))
-        next_anonymous_name = f'__anonymous_{CStruct.__NEXT_ANONYMOUS_ID__}__'
+        struct_def = CStructType(None, [('a', bd.int)])
+        next_anonymous_name = f'__anonymous_{CStructType.__NEXT_ANONYMOUS_ID__}__'
         self.assert_parses('extern struct { int a; } varname;',
                            exp_structs={next_anonymous_name: struct_def},
                            exp_vars={'varname': struct_def})
 
     def test_readFromCursor_onStructDefWithVarDef_ok(self):
-        struct_def = CStruct.typedef('structname', ('a', bd.int))
+        struct_def = CStructType('structname', [('a', bd.int)])
         self.assert_parses('extern struct strctname { int a; } varname;',
                            exp_structs={'strctname': struct_def},
                            exp_vars={'varname': struct_def})
 
     def test_readFromCursor_onNestedStructDef_ok(self):
-        inner_struct = CStruct.typedef('inner')
-        outer_struct = CStruct.typedef(None, ('a', inner_struct))
+        inner_struct = CStructType('inner', [])
+        outer_struct = CStructType(None, [('a', inner_struct)])
         self.assert_parses('extern struct outer{ struct inner {} a; } varname;',
                            exp_vars={'varname': outer_struct},
                            exp_structs={'inner': inner_struct,
                                         'outer': outer_struct})
 
     def test_readFromCursor_onForwardRefOnly_ok(self):
-        struct_def = CStruct.typedef('strctname')
+        struct_def = CStructType('strctname', [])
         self.assert_parses('struct strctname;',
                            exp_structs={'strctname': struct_def})
 
     def test_readFromCursor_onForwardRefDeclaredDelayed_ok(self):
-        struct_def = CStruct.typedef('strctname')
-        struct_def.delayed_def(('a', struct_def.ptr))
+        struct_def = CStructType('strctname')
+        struct_def.delayed_def([('a', struct_def.ptr)])
         self.assert_parses('struct strctname;'
                            'struct strctname { struct strctname * a; };',
                            exp_structs={'strctname': struct_def})
 
     def test_readFromCursor_onDelayedStructDefWithMemberTypeDefinedAfterFirstReference_ok(self):
-        struct_def = CStruct.typedef('strctname', ('member', bd.int))
+        struct_def = CStructType('strctname', [('member', bd.int)])
         self.assert_parses('struct strctname;\n'
                            'typedef int newtype;\n'
                            'struct strctname {\n'
@@ -463,30 +464,33 @@ class TestCParser:
                            exp_typedefs={'newtype': bd.int})
 
     def test_readFromCursor_onStructWithFlexibleArrayMember_addsArrayOfLen0(self):
-        struct_def = CStruct.typedef('strctname',
-                                     ('a', bd.int), ('b', bd.short.array(0)))
+        struct_def = CStructType('strctname',
+                                 [('a', bd.int), ('b', bd.short.array(0))])
         self.assert_parses('struct strctname { int a; short b[]; };',
                            exp_structs={'strctname': struct_def})
 
-    def test_readFromCursor_onPackingSet_ok(self):
-        struct_def = CStruct.typedef('strctname')
+    def test_readFromCursor_onPackingSet_ignoreAsNotSupportedYet(self):
+        struct_def = CStructType('strctname', [])
         self.assert_parses('#pragma pack(1)\n'
                            'struct strctname { };',
                            exp_structs={'strctname': struct_def})
 
     def test_readFromCursor_onEnum_ok(self):
+        cenum_type = CEnumType('enumname')
         self.assert_parses('extern enum enumname { a, b } varname;',
-                           exp_structs={'enumname': CEnum},
-                           exp_vars={'varname': CEnum})
+                           exp_structs={'enumname': cenum_type},
+                           exp_vars={'varname': cenum_type})
 
     def test_readFromCursor_onEnumInTypeDef_ok(self):
+        cenum_type = CEnumType('enumname')
         self.assert_parses('typedef enum enumname { a, b } typename;',
-                           exp_structs={'enumname': CEnum},
-                           exp_typedefs={'typename': CEnum})
+                           exp_structs={'enumname': cenum_type},
+                           exp_typedefs={'typename': cenum_type})
 
     def test_readFromCursor_onAnonymousEnumInTypeDef_ok(self):
+        cenum_type = CEnumType()
         self.assert_parses('typedef enum { a, b } typename;',
-                           exp_typedefs={'typename': CEnum})
+                           exp_typedefs={'typename': cenum_type})
 
     def test_readFromCursor_onDefineCustomType_returnsTypedef(self):
         self.assert_parses('typedef int newtype;',
@@ -500,19 +504,19 @@ class TestCParser:
 
     def test_readFromCursor_onSimpleFuncProto_ok(self):
         self.assert_parses('void funcname();',
-                           exp_funcs={'funcname': CFunc.typedef()})
+                           exp_funcs={'funcname': CFuncType()})
 
     def test_readFromCursor_onFuncProtoArgsAndResult_ok(self):
-        func_def = CFunc.typedef(bd.int, bd.char, returns=bd.int)
+        func_def = CFuncType(bd.int, [bd.int, bd.char])
         self.assert_parses('int funcname(int, char a);',
                            exp_funcs={'funcname': func_def})
 
     def test_readFromCursor_onExternFunc_ok(self):
         self.assert_parses('extern void funcname();',
-                           exp_funcs={'funcname': CFunc.typedef()})
+                           exp_funcs={'funcname': CFuncType()})
 
-    def test_readFromCursor_onXXXXX_ok(self):
-        funcproto_def = CFunc.typedef()
+    def test_readFromCursor_onFuncPtrDefinedFromFuncProtoTypedef_ok(self):
+        funcproto_def = CFuncType()
         self.assert_parses('typedef void funcproto(void);\n'
                            'typedef funcproto * funcptr;\n',
                            exp_typedefs={'funcproto': funcproto_def,
@@ -526,7 +530,7 @@ class TestCParser:
 
     def test_readFromCursor_onImplFunc_ok(self):
         self.assert_parses('void funcname() { return; }',
-                           exp_funcs={'funcname': CFunc.typedef()},
+                           exp_funcs={'funcname': CFuncType()},
                            exp_impls={'funcname'})
 
     def test_readFromCursor_onMacro_returnsSourceLocation(self):
@@ -572,7 +576,8 @@ class TestCParser:
     @classmethod
     def parse(cls, content, patches=None, sys_include_dirs=None,
               target_compiler=None, **predef_macros):
-        parser = CParser(predef_macros, [], sys_include_dirs, target_compiler)
+        parser = CParser(predef_macros, [], sys_include_dirs,
+                         target_compiler=target_compiler)
         fileobj = NamedTemporaryFile(suffix='.c', delete=False, mode='w+t')
         try:
             fileobj.write(content)
@@ -600,7 +605,7 @@ class TestCParser:
         parser = self.parse('int v; typedef char t; void f(void);')
         assert parser.vars == {'v': bd.int}
         assert parser.typedefs['t'] == bd.char
-        assert parser.funcs == {'f': CFunc.typedef()}
+        assert parser.funcs == {'f': CFuncType()}
 
     def test_read_onMacro_returnsParsedMacro(self):
         parser = self.parse('\n\n#define MACRO 3')
@@ -656,6 +661,19 @@ class TestCParser:
         assert 'sys_func' not in parser.funcs, \
             'a system function was parsed'
 
+    def test_read_onWhitelistedSystemHeaderEntries_doNotIgnore(self, tmpdir):
+        basedir = build_tree(tmpdir, {
+            'test.c': b'#include <test.h>\n',
+            'sys-incl': {'test.h': b'struct strct { };\n'
+                                   b'#define MACRO\n'
+                                   b'void func(void);\n'}})
+        parser = CParser(sys_include_dirs=[basedir / 'sys-incl'],
+                         sys_whitelist=['strct', 'MACRO', 'func'])
+        parser.read(basedir / 'test.c')
+        assert 'strct' in parser.structs
+        assert 'MACRO' in parser.macros
+        assert 'func' in parser.funcs
+
     def test_read_onPredefinedMacroDict_doesNotModifyPredefinedMacroDict(self, tmpdir):
         c_file = tmpdir.join('predef_macro.c')
         c_file.write_binary(b'#define B')
@@ -695,7 +713,7 @@ class TestCParser:
 
     def test_readFromCursor_onCDeclFunc_returnsFuncWithCDeclAttr(self):
         parser = self.parse('void __cdecl funcname();')
-        assert parser.funcs == {'funcname': CFunc.typedef().with_attr('cdecl')}
+        assert parser.funcs == {'funcname': CFuncType().with_attr('__cdecl')}
 
     def test_read_withPatchedFile(self):
         fileobj = NamedTemporaryFile(suffix='.h', delete=False, mode='w+t')

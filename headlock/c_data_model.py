@@ -3,6 +3,7 @@ import itertools
 import sys
 import collections, collections.abc
 import functools
+import copy
 
 
 class WriteProtectError(Exception):
@@ -23,7 +24,8 @@ def issubclass_ctypes_ptr(cls):
 def issubclass_ctypes(cls):
     # this is a dirty hack, as there is no access to the public visible
     # common base class of ctypes objects
-    return cls.__mro__[-2].__name__ == '_CData'
+    return cls.__mro__[-2].__name__ == '_CData' or \
+           issubclass(cls, (ct.Structure, ct.Union))
 
 
 def isinstance_ctypes(obj):
@@ -31,7 +33,7 @@ def isinstance_ctypes(obj):
 
 
 def map_unicode_to_list(val, base_type):
-    if not issubclass(base_type, CInt):
+    if not isinstance(base_type, CIntType):
         raise TypeError('Python Strings can only be assigned to '
                         'arrays/pointers of scalars')
     else:
@@ -45,71 +47,6 @@ def map_unicode_to_list(val, base_type):
                         for pos in range(0, len(enc_val), elem_len)]
             result = conv_val[1:]
         return result + [0]
-
-
-class CObjType(type):
-
-    def __init__(self, *args, **argv):
-        super(CObjType, self).__init__(*args, **argv)
-        self._ptr = None
-
-    def __len__(self):
-        return self._get_len()
-
-    def __bool__(self):
-        return True
-
-    def __eq__(self, other):
-        return self._type_equality(other, frozenset())
-
-    def __ne__(self, other):
-        return not self == other
-
-    def __hash__(self):
-        return id(self)
-
-    @property
-    def ptr(self):
-        return self._get_ptr_type()
-
-    def array(self, element_count):
-        return CArray.typedef(self, element_count)
-
-    def alloc_array(self, initval):
-        if isinstance(initval, collections.abc.Iterable):
-            if not isinstance(initval, collections.abc.Collection):
-                initval = list(initval)
-            elif isinstance(initval, str):
-                initval = map_unicode_to_list(initval, self)
-            return self.array(len(initval))(initval)
-        else:
-            return self.array(initval)()
-
-    def alloc_ptr(self, initval):
-        array = self.alloc_array(initval)
-        return self.ptr(array.adr, _depends_on_=array)
-
-    @property
-    def sizeof(self):
-        return self._get_sizeof()
-
-    @property
-    def null_val(self):
-        return self._get_null_val()
-
-    def with_attr(self, attr_name):
-        if attr_name in self.c_attributes:
-            raise TypeError(f'attribute {self.__name__} is already set')
-        if self.c_attributes:
-            parent = self.__mro__[1]
-        else:
-            parent = self
-        prefix = (attr_name+'_') if attr_name in ('volatile', 'const') else ''
-        c_attributes = parent.c_attributes | {attr_name}
-        return type(prefix + self.__name__,
-                    (parent,),
-                    {'c_attributes': c_attributes,
-                     'c_name': parent.c_name or parent.__name__})
 
 
 @functools.total_ordering
@@ -177,32 +114,148 @@ class CMemory:
         return result + ')'
 
     def __eq__(self, other):
-        return self[:len(other)] == bytes(other)
+        try:
+            other_as_bytes = bytes(other)
+            other_len = len(other)
+        except TypeError:
+            return False
+        else:
+            return self[:other_len] == other_as_bytes
 
     def __gt__(self, other):
         return self[:len(other)] > bytes(other)
 
 
-class CObj(metaclass=CObjType):
+class CObjType:
 
-    c_name = None
-
-    c_attributes = frozenset()
-
-    ctypes_type = None
+    COBJ_CLASS:type = None
 
     PRECEDENCE = 0
 
-    def __init__(self, init_obj=None, _depends_on_=None):
+    def __init__(self, ctypes_type):
+        self.c_attributes = frozenset()
+        self.ctypes_type = ctypes_type
+        self._ptr = None
+
+    def __call__(self, init_obj=None, _depends_on_=None):
+        return self.COBJ_CLASS(self, init_obj, _depends_on_)
+
+    def __bool__(self):
+        return True
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        else:
+            remaining = [(self, other)]
+            processed = set()
+            while remaining:
+                (self_cobj_type, other_cobj_type) = remaining.pop()
+                if (id(self_cobj_type), id(other_cobj_type)) not in processed:
+                    if not self_cobj_type.shallow_eq(other_cobj_type):
+                        return False
+                    remaining += zip(self_cobj_type.shallow_iter_subtypes(),
+                                     other_cobj_type.shallow_iter_subtypes())
+                    processed.add( (id(self_cobj_type), id(other_cobj_type)) )
+            return True
+
+    def shallow_eq(self, other):
+        return type(self) == type(other) \
+               and self.c_attributes == other.c_attributes
+
+    def __hash__(self):
+        return hash(self.c_definition())
+
+    def __iter__(self):
+        return self.shallow_iter_subtypes()
+
+    @property
+    def ptr(self):
+        # this is an optimization to avoid creating a new Pointer type
+        # everytime a pointer to this type is required
+        if self._ptr is None:
+            self._ptr = CPointerType(self)
+        return self._ptr
+
+    def array(self, element_count):
+        return CArrayType(self, element_count)
+
+    def alloc_array(self, initval):
+        if isinstance(initval, collections.abc.Iterable):
+            if not isinstance(initval, collections.abc.Collection):
+                initval = list(initval)
+            elif isinstance(initval, str):
+                initval = map_unicode_to_list(initval, self)
+            elif isinstance(initval, collections.abc.ByteString):
+                initval = initval + b'\0'
+            return self.array(len(initval))(initval)
+        else:
+            return self.array(initval)()
+
+    def alloc_ptr(self, initval):
+        array = self.alloc_array(initval)
+        return self.ptr(array.adr, _depends_on_=array)
+
+    @property
+    def sizeof(self):
+        raise NotImplementedError('this is an abstract base class')
+
+    @property
+    def null_val(self):
+        raise NotImplementedError('this is an abstract base class')
+
+    def c_definition(self, refering_def=''):
+        raise NotImplementedError('this is an abstract base class')
+
+    def _decorate_c_definition(self, c_def):
+        return ''.join(attr + ' ' for attr in sorted(self.c_attributes)) + c_def
+
+    def with_attr(self, attr_name):
+        if attr_name in self.c_attributes:
+            raise ValueError(f'attribute {attr_name} is already set')
+        derived = copy.copy(self)
+        derived.c_attributes = self.c_attributes | {attr_name}
+        return derived
+
+    def iter_subtypes(self, top_level_last=False, filter=None,
+                      parent=None, processed=None):
+        if processed is None:
+            processed = set()
+        ident = self.ident()
+        if ident not in processed:
+            if filter is None or filter(self, parent):
+                processed.add(ident)
+                if not top_level_last:
+                    yield self
+                for sub_type in self.shallow_iter_subtypes():
+                    yield from sub_type.iter_subtypes(top_level_last, filter,
+                                                      self, processed)
+                if top_level_last:
+                    yield self
+
+    def ident(self):
+        return id(self)
+
+    def shallow_iter_subtypes(self):
+        return iter([])
+
+    def has_attr(self, attr_name):
+        return attr_name in self.c_attributes
+
+
+class CObj:
+
+    def __init__(self, cobj_type:CObjType, init_obj=None, _depends_on_=None):
         super(CObj, self).__init__()
+        self.cobj_type =  cobj_type
         self._initialized = False
         self._depends_on_ = _depends_on_
         if isinstance_ctypes(init_obj):
             self.ctypes_obj = init_obj
         else:
-            self.ctypes_obj = self.ctypes_type()
+            self.ctypes_obj = self.cobj_type.ctypes_type()
             if init_obj is None:
-                self.val = self.null_val
+                self.val = self.cobj_type.null_val
             elif isinstance(init_obj, CObj):
                 self._cast_from(init_obj)
             else:
@@ -210,65 +263,30 @@ class CObj(metaclass=CObjType):
         self._initialized = True
 
     def __repr__(self):
-        return type(self).__name__ + '(' + repr(self.val) + ')'
-
-    def __len__(self):
-        return self._get_len()
+        return f'{self.cobj_type!r}({self.val!r})'
 
     def __bool__(self):
-        return self.val != self.null_val
-
-    @classmethod
-    def _get_ptr_type(cls):
-        if cls._ptr is None:
-            cls._ptr = CPointer.typedef(cls)
-        return cls._ptr
+        return self.val != self.cobj_type.null_val
 
     @property
     def adr(self):
         # type: () -> CPointer
-        ptr = self._get_ptr_type()
+        ptr = self.cobj_type.ptr
         return ptr(ptr.ctypes_type(self.ctypes_obj), _depends_on_=self)
 
     @property
     def sizeof(self):
-        return self._get_sizeof()
-
-    @classmethod
-    def _get_sizeof(self):
-        raise NotImplementedError('this is an abstract base class')
-
-    @classmethod
-    def _get_len(cls):
-        raise TypeError(f"object of type '{cls.__name__}' has no len()")
+        return self.cobj_type.sizeof
 
     def _cast_from(self, cobj):
         self.val = cobj.val
 
     @property
-    def null_val(self):
-        return self._get_null_val()
-
-    @classmethod
-    def _get_null_val(cls):
+    def val(self):
         raise NotImplementedError('this is an abstract base class')
 
-    @classmethod
-    def c_definition(cls, refering_def=''):
-        raise NotImplementedError('this is an abstract base class')
-
-    @classmethod
-    def _decorate_c_definition(cls, c_def):
-        if cls.has_attr('const'):
-            c_def = 'const ' + c_def
-        if cls.has_attr('volatile'):
-            c_def = 'volatile ' + c_def
-        return c_def
-
-    def _get_val(self):
-        raise NotImplementedError('this is an abstract base class')
-
-    def _set_val(self, pyobj):
+    @val.setter
+    def val(self, pyobj):
         if isinstance(pyobj, CObj):
             self.val = pyobj.val
         else:
@@ -276,14 +294,6 @@ class CObj(metaclass=CObjType):
                 self.mem = pyobj
             except TypeError:
                 raise ValueError(f'{pyobj!r} cannot be converted to {self!r}')
-
-    @property
-    def val(self):
-        return self._get_val()
-
-    @val.setter
-    def val(self, pyobj):
-        self._set_val(pyobj)
 
     def __eq__(self, other):
         if isinstance(other, CObj):
@@ -296,39 +306,39 @@ class CObj(metaclass=CObjType):
 
     def __gt__(self, other):
         if isinstance(other, CObj):
-            return type(self) == type(other) and self.val > other.val
+            return self.cobj_type == self.cobj_type and self.val > other.val
         else:
             return self.val > other
 
     def __lt__(self, other):
         if isinstance(other, CObj):
-            return type(self) == type(other) and self.val < other.val
+            return self.cobj_type == self.cobj_type and self.val < other.val
         else:
             return self.val < other
 
     def __ge__(self, other):
         if isinstance(other, CObj):
-            return type(self) == type(other) and self.val >= other.val
+            return self.cobj_type == self.cobj_type and self.val >= other.val
         else:
             return self.val >= other
 
     def __le__(self, other):
         if isinstance(other, CObj):
-            return type(self) == type(other) and self.val <= other.val
+            return self.cobj_type == self.cobj_type and self.val <= other.val
         else:
             return self.val <= other
 
     def __add__(self, other):
-        return type(self)(self.val + int(other))
+        return self.cobj_type(self.val + int(other))
 
     def __sub__(self, other):
-        return type(self)(self.val - int(other))
+        return self.cobj_type(self.val - int(other))
 
     def __radd__(self, other):
-        return type(self)(int(other) + self.val)
+        return self.cobj_type(int(other) + self.val)
 
     def __rsub__(self, other):
-        return type(self)(int(other) - self.val)
+        return self.cobj_type(int(other) - self.val)
 
     def __iadd__(self, other):
         self.val += int(other)
@@ -339,73 +349,95 @@ class CObj(metaclass=CObjType):
         return self
 
     def copy(self):
-        return type(self)(self.val)
-
-    @classmethod
-    def _type_equality(cls, other, recursions):
-        return other is cls
+        return self.cobj_type(self.val)
 
     @property
     def mem(self):
-        readonly=self.has_attr('const')
+        readonly = self.cobj_type.has_attr('const')
         return CMemory(ct.addressof(self.ctypes_obj), None, readonly)
 
     @mem.setter
     def mem(self, new_val):
-        if self.has_attr('const'):
+        if self.cobj_type.has_attr('const'):
             raise WriteProtectError()
         ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_ubyte))
         for ndx in range(len(new_val)):
             ptr[ndx] = new_val[ndx]
 
-    @classmethod
-    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
-        return iter([])
 
-    @classmethod
-    def has_attr(cls, attr_name):
-        return attr_name in cls.c_attributes
+class CVoidType(CObjType):
 
+    def __init__(self):
+        super().__init__(None)
 
-class CVoid(CObj):
-
-    c_name = 'void'
-
-    @classmethod
-    def _get_sizeof(cls):
+    @property
+    def sizeof(self):
         raise NotImplementedError('.sizeof does not work on void')
 
-    @classmethod
     def alloc_ptr(self, initval):
         array = BuildInDefs.unsigned_char.alloc_array(initval)
         return self.ptr(array.adr, _depends_on_=array)
 
-    @classmethod
-    def c_definition(cls, refering_def=''):
-        result = cls._decorate_c_definition('void')
+    def c_definition(self, refering_def=''):
+        result = self._decorate_c_definition('void')
         if refering_def:
             result += ' ' + refering_def
         return result
 
 
-class CInt(CObj):
+class CVoidObj(CObj):
+    pass
 
-    bits = None
-    signed = None
 
-    @classmethod
-    def _get_sizeof(cls):
-        return cls.bits // 8
+CVoidType.COBJ_CLASS = CVoidObj
 
-    @classmethod
-    def _get_null_val(cls):
+
+class CIntType(CObjType):
+
+    def __init__(self, c_name, bits, signed, ctypes_type):
+        super().__init__(ctypes_type)
+        self.bits = bits
+        self.signed = signed
+        self.c_name = c_name
+
+    def shallow_eq(self, other):
+        return super().shallow_eq(other) \
+               and self.bits == other.bits \
+               and self.signed == other.signed \
+               and self.c_name == other.c_name
+
+    @property
+    def sizeof(self):
+        return self.bits // 8
+
+    @property
+    def null_val(self):
         return 0
 
-    def _get_val(self):
-        return self.ctypes_obj.value
+    def c_definition(self, refering_def=''):
+        result = self._decorate_c_definition(self.c_name)
+        if refering_def:
+            result += ' ' + refering_def
+        return result
 
-    def _set_val(self, pyobj):
-        if self.has_attr('const') and self._initialized:
+    def __repr__(self):
+        return ('ts.' \
+                + ''.join(a+'_' for a in sorted(self.c_attributes)) \
+                + self.c_name.replace(' ', '_'))
+
+class CInt(CObj):
+
+    @property
+    def val(self):
+        result = self.ctypes_obj.value
+        if isinstance(result, bytes):
+            return result[0]
+        else:
+            return result
+
+    @val.setter
+    def val(self, pyobj):
+        if self.cobj_type.has_attr('const') and self._initialized:
             raise WriteProtectError()
         if pyobj is None:
             pyobj = 0
@@ -417,22 +449,7 @@ class CInt(CObj):
         if isinstance(pyobj, int):
             self.ctypes_obj.value = pyobj
         else:
-            super(CInt, self)._set_val(pyobj)
-
-    @classmethod
-    def _type_equality(cls, other, recursions):
-        return isinstance(other, CObjType) \
-               and issubclass(other, CInt) \
-               and cls.bits == other.bits \
-               and cls.signed == other.signed \
-               and cls.c_attributes == other.c_attributes
-
-    @classmethod
-    def c_definition(cls, refering_def=''):
-        result = cls._decorate_c_definition(cls.c_name or cls.__name__)
-        if refering_def:
-            result += ' ' + refering_def
-        return result
+            CObj.val.fset(self, pyobj)
 
     def __int__(self):
         return self.val
@@ -440,67 +457,100 @@ class CInt(CObj):
     def __index__(self):
         return self.val
 
+    def __repr__(self):
+        if self.cobj_type.bits == 8 and self.cobj_type.signed:
+            return f'ts.{self.cobj_type.c_name}({bytes([self.val])!r})'
+        else:
+            return super().__repr__()
+
+
+CIntType.COBJ_CLASS = CInt
+
+
+class CFloatType(CObjType):
+    """This is a dummy yet"""
+
+    def __init__(self, c_name, bits, ctypes_type):
+        super().__init__(ctypes_type)
+        self.bits = bits
+        self.c_name = c_name
+
 
 class CFloat(CObj):
     """This is a dummy yet"""
+    pass
+
+CFloatType.COBJ_CLASS = CFloat
+
+
+class CPointerType(CObjType):
+
+    PRECEDENCE = 10
+
+    def __init__(self, base_type:CObjType, ctypes_type=None):
+        super().__init__(ctypes_type or ct.POINTER(base_type.ctypes_type))
+        self.base_type = base_type
+
+    @property
+    def sizeof(self):
+        return ct.sizeof(self.ctypes_type)
+
+    @property
+    def null_val(cls):
+        return 0
+
+    def c_definition(self, refering_def=''):
+        result = '*' + self._decorate_c_definition(refering_def)
+        if self.base_type.PRECEDENCE > self.PRECEDENCE:
+            result = '(' + result + ')'
+        return self.base_type.c_definition(result)
+
+    def shallow_iter_subtypes(self):
+        yield self.base_type
+
+    def __repr__(self):
+        return '_'.join([repr(self.base_type)]
+                        + sorted(self.c_attributes)
+                        + ['ptr'])
 
 
 class CPointer(CObj):
 
-    base_type = CObj
-
-    PRECEDENCE = 10
-
-    def __init__(self, init_val=None, _depends_on_=None):
+    def __init__(self, cobj_type:CPointerType, init_val=None,
+                 _depends_on_=None):
         if isinstance(init_val, collections.Iterable) \
                 and not isinstance(init_val, CObj) \
-                and not isinstance_ctypes(init_val)\
+                and not isinstance_ctypes(init_val) \
                 and not isinstance(init_val, int):
             assert _depends_on_ is None
-            init_val = self.base_type.alloc_ptr(init_val)
-        super(CPointer, self).__init__(init_val, _depends_on_)
+            init_val = cobj_type.base_type.alloc_ptr(init_val)
+        super().__init__(cobj_type, init_val, _depends_on_)
 
-    @classmethod
-    def typedef(cls, base_type):
-        return type(base_type.__name__ + '_ptr',
-                    (cls,),
-                    dict(base_type=base_type,
-                         ctypes_type=ct.POINTER(base_type.ctypes_type)))
+    @property
+    def base_type(self) -> CObjType:
+        return self.cobj_type.base_type
 
     @property
     def ref(self):
-        if self.ctypes_type == ct.c_void_p:
+        if self.cobj_type.ctypes_type == ct.c_void_p:
             ptr = ct.cast(self.ctypes_obj, ct.POINTER(ct.c_ubyte))
         else:
             ptr = self.ctypes_obj
-        return self.base_type(ptr.contents, _depends_on_=self._depends_on_)
+        return self.base_type.COBJ_CLASS(self.base_type, ptr.contents,
+                                         _depends_on_=self._depends_on_)
 
     @property
     def _as_ctypes_int(self):
         ptr_ptr = ct.pointer(self.ctypes_obj)
         return ct.cast(ptr_ptr, ct.POINTER(ct.c_int)).contents
 
-    @classmethod
-    def _get_sizeof(cls):
-        return ct.sizeof(cls.ctypes_type)
-
-    @classmethod
-    def _get_null_val(cls):
-        return 0
-
-    @classmethod
-    def _type_equality(cls, other, recursions):
-        return isinstance(other, CObjType) \
-               and issubclass(other, CPointer) \
-               and cls.c_attributes == other.c_attributes \
-               and cls.base_type._type_equality(other.base_type, recursions) \
-               and cls.c_attributes == other.c_attributes
-
-    def _get_val(self):
+    @property
+    def val(self):
         return self._as_ctypes_int.value
 
-    def _set_val(self, pyobj):
-        if self.has_attr('const') and self._initialized:
+    @val.setter
+    def val(self, pyobj):
+        if self.cobj_type.has_attr('const') and self._initialized:
             raise WriteProtectError()
         elif isinstance(pyobj, int):
             self._as_ctypes_int.value = pyobj
@@ -515,12 +565,12 @@ class CPointer(CObj):
             for ndx, item in enumerate(pyobj):
                 self[ndx].val = item
         else:
-            super()._set_val(pyobj)
+            CObj.val.fset(self, pyobj)
 
     @property
     def c_str(self):
         for terminator_pos in itertools.count():
-            if self[terminator_pos] == 0:
+            if not self[terminator_pos]:
                 return bytes(self[:terminator_pos])
 
     @c_str.setter
@@ -548,8 +598,8 @@ class CPointer(CObj):
 
     def __repr__(self):
         digits = ct.sizeof(ct.c_int) * 2
-        fmt_str = '{}(0x{:0' + str(digits) + 'X})'
-        return fmt_str.format(type(self).__name__, self.val)
+        fmt_str = '{!r}(0x{:0' + str(digits) + 'X})'
+        return fmt_str.format(self.cobj_type, self.val)
 
     def __add__(self, offs):
         newobj = self.copy()
@@ -562,16 +612,18 @@ class CPointer(CObj):
 
     def __sub__(self, other):
         if isinstance(other, CPointer):
-            if type(self) != type(other):
+            if self.cobj_type != other.cobj_type:
                 raise TypeError(
                     f'Cannot subtract pointers of different types '
-                    f'({type(self).__name__} and {type(other).__name__})')
+                    f'({self.cobj_type.c_definition()} '
+                    f'and {other.cobj_type.c_definition()})')
             return (self.val - other.val) // self.base_type.sizeof
         if isinstance(other, CArray):
-            if self.base_type != other.base_type:
+            if self.cobj_type.base_type != other.cobj_type.base_type:
                 raise TypeError(
-                    f'Cannot subtract array from pointer of different '
-                    f'types ({type(self).__name__} and {type(other).__name__})')
+                    f'Cannot subtract array from pointer of different types '
+                    f'({self.cobj_type.c_definition()} '
+                    f'and {other.cobj_type.c_definition()})')
             return (self.val - other[0].adr.val) // self.base_type.sizeof
         else:
             newobj = self.copy()
@@ -599,42 +651,61 @@ class CPointer(CObj):
     def __int__(self):
         return self.val
 
-    @classmethod
-    def c_definition(cls, refering_def=''):
-        result = '*' + cls._decorate_c_definition(refering_def)
-        if cls.base_type.PRECEDENCE > cls.PRECEDENCE:
-            result = '(' + result + ')'
-        return cls.base_type.c_definition(result)
+CPointerType.COBJ_CLASS = CPointer
 
-    @classmethod
-    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
-        if not only_full_defs or not issubclass(cls.base_type, CStruct):
-            yield from cls.base_type.iter_req_custom_types(only_full_defs,
-                                                           already_processed)
+
+class CArrayType(CObjType):
+
+    PRECEDENCE = 20
+
+    def __init__(self, base_type:CObjType, element_count:int, ctypes_type=None):
+        super().__init__(ctypes_type or base_type.ctypes_type * element_count)
+        self.base_type = base_type
+        self.element_count = element_count
+
+    def shallow_eq(self, other):
+        return super().shallow_eq(other) \
+               and self.element_count == other.element_count
+
+    def __repr__(self):
+        return '_'.join([repr(self.base_type)]
+                        + sorted(self.c_attributes)
+                        + [f'array{self.element_count}'])
+
+    @property
+    def sizeof(cls):
+        return cls.base_type.sizeof * cls.element_count
+
+    @property
+    def null_val(cls):
+        return [cls.base_type.null_val] * cls.element_count
+
+    def __len__(self):
+        return self.element_count
+
+    def c_definition(self, refering_def=''):
+        result = f'{refering_def}[{self.element_count}]'
+        result = self._decorate_c_definition(result)
+        if self.base_type.PRECEDENCE > self.PRECEDENCE:
+            result = '(' + result + ')'
+        return self.base_type.c_definition(result)
+
+    def shallow_iter_subtypes(self):
+        yield self.base_type
 
 
 class CArray(CObj):
 
-    element_count = 0
-    base_type = CObj
+    @property
+    def base_type(self):
+        return self.cobj_type.base_type
 
-    PRECEDENCE = 20
+    @property
+    def element_count(self):
+        return self.cobj_type.element_count
 
-    @classmethod
-    def typedef(cls, base_type, element_count):
-        return type(base_type.__name__ + '_' + str(element_count),
-                    (cls,),
-                    dict(base_type=base_type,
-                         element_count=element_count,
-                         ctypes_type=base_type.ctypes_type * element_count))
-
-    @classmethod
-    def _get_sizeof(cls):
-        return cls.base_type.sizeof * cls.element_count
-
-    @classmethod
-    def _get_null_val(cls):
-        return [cls.base_type.null_val] * cls.element_count
+    def __len__(self):
+        return len(self.cobj_type)
 
     def __getitem__(self, ndx):
         def abs_ndx(rel_ndx, ext=0):
@@ -659,7 +730,7 @@ class CArray(CObj):
                            ext=1)
             part_array_type = self.base_type.array(stop - start)
             return part_array_type(
-                self.ctypes_type.from_address(adr(start)),
+                self.cobj_type.ctypes_type.from_address(adr(start)),
                 _depends_on_=self)
         else:
             return self.base_type(
@@ -673,10 +744,12 @@ class CArray(CObj):
     def __iter__(self):
         return (self[ndx] for ndx in range(self.element_count))
 
-    def _get_val(self):
+    @property
+    def val(self):
         return [self[ndx].val for ndx in range(self.element_count)]
 
-    def _set_val(self, new_val):
+    @val.setter
+    def val(self, new_val):
         if isinstance(new_val, str):
             new_val = map_unicode_to_list(new_val, self.base_type)
         ndx = 0
@@ -713,93 +786,128 @@ class CArray(CObj):
     def __str__(self):
         return ''.join(chr(c) for c in self.val[0:self.element_count])
 
-    @classmethod
-    def _type_equality(cls, other, recursions):
-        return isinstance(other, CObjType) \
-               and issubclass(other, CArray) \
-               and cls.c_attributes == other.c_attributes \
-               and other.element_count == cls.element_count \
-               and other.base_type._type_equality(cls.base_type, recursions)
-
-    @classmethod
-    def c_definition(cls, refering_def=''):
-        result = f'{refering_def}[{cls.element_count}]'
-        result = cls._decorate_c_definition(result)
-        if cls.base_type.PRECEDENCE > cls.PRECEDENCE:
-            result = '(' + result + ')'
-        return cls.base_type.c_definition(result)
-
-    @classmethod
-    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
-        yield from cls.base_type.iter_req_custom_types(only_full_defs,
-                                                       already_processed)
+CArrayType.COBJ_CLASS = CArray
 
 
-class CMember(object):
+class CStructType(CObjType):
 
-    def __init__(self, name):
-        self.name = name
+    __NEXT_ANONYMOUS_ID__ = 1
 
-    def __get__(self, instance, owner):
-        if instance is None:
-            return owner._members_[self.name]
+    def __init__(self, struct_name, members=None, packing=None):
+        if not struct_name:
+            struct_name = f'__anonymous_{CStructType.__NEXT_ANONYMOUS_ID__}__'
+            CStructType.__NEXT_ANONYMOUS_ID__ += 1
+        self._packing_ = packing or 4
+        self._members_ = None
+        self._members_order_ = None
+        ctypes_type = type('ctypes_' + struct_name,
+                           (ct.Structure,),
+                           {'_pack_': self._packing_})
+        super().__init__(ctypes_type)
+        self.struct_name = struct_name
+        if members is not None:
+            self.delayed_def(members)
+
+    def delayed_def(self, member_types):
+        self._members_ = dict(member_types)
+        self._members_order_ = [nm for nm, tp in member_types]
+        if member_types:
+            self.ctypes_type._fields_ = [(nm, cobj_type.ctypes_type)
+                                         for nm, cobj_type in member_types]
+        for nm, cobj_type in member_types:
+            if nm and not hasattr(self, nm):
+                setattr(self, nm, cobj_type)
+
+    def __call__(self, *args, _depends_on_=None, **argv):
+        argv.update(zip(self._members_order_, args))
+        return super().__call__(argv, _depends_on_)
+
+    def __len__(self):
+        return len(self._members_)
+
+    @property
+    def sizeof(self):
+        return ct.sizeof(self.ctypes_type)
+
+    @property
+    def null_val(cls):
+        return {name: cobj_type.null_val
+                for name, cobj_type in cls._members_.items()}
+
+    def shallow_eq(self, other):
+        return super().shallow_eq(other) \
+               and self._packing_ == other._packing_ \
+               and self._members_order_ == other._members_order_
+
+    def __hash__(self):
+        return super().__hash__()
+
+    def is_anonymous_struct(self):
+        return self.struct_name.startswith('__anonymous_')
+
+    def c_definition(self, refering_def=''):
+        if self.is_anonymous_struct():
+            return self.c_definition_full(refering_def)
         else:
-            return instance[self.name]
+            return self.c_definition_base(refering_def)
+
+    def c_definition_base(self, refering_def=''):
+        result = self._decorate_c_definition(
+            'struct' if self.is_anonymous_struct() else
+            f'struct {self.struct_name}')
+        if refering_def:
+            result += ' ' + refering_def
+        return result
+
+    def c_definition_full(self, refering_def=''):
+        space = ' ' if refering_def else ''
+        body = '{\n' \
+               + ''.join(f'\t{line}\n'
+                         for mname in self._members_order_
+                         for line in (
+                                 self._members_[mname].c_definition(mname) + ';')
+                                                                .splitlines()) \
+               + '}'
+        return self.c_definition_base(refering_def=body + space + refering_def)
+
+    def shallow_iter_subtypes(self):
+        if self._members_ is not None:
+            yield from self._members_.values()
+
+    def ident(self):
+        return id(self) if self.is_anonymous_struct() else \
+               'struct '+self.struct_name
+
+    def __repr__(self):
+        return ('ts.struct.'
+                + ''.join(a+'_' for a in sorted(self.c_attributes))
+                + self.struct_name.replace(' ', '_'))
+
 
 
 class CStruct(CObj):
 
-    c_name = None
-    _packing_ = None
-    _members_ = {}
-    _members_order_ = []
-    __NEXT_ANONYMOUS_ID__ = 1
-
-    def __init__(self, *args, _depends_on_=None, **argv):
-        if len(args) == 1 and isinstance_ctypes(args[0]):
-            super(CStruct, self).__init__(*args, **argv)
-        else:
-            super(CStruct, self).__init__(_depends_on_=_depends_on_)
-            argv.update(zip(self._members_order_, args))
-            self.val = argv
-
     def __repr__(self):
         params = (name + '=' + repr(cobj.val)
-                  for name, cobj in zip(self._members_order_, self))
-        return type(self).__name__ + '(' + ', '.join(params) + ')'
-
-    @classmethod
-    def typedef(cls, name, *members, packing=None):
-        ct_dct = dict()
-        if packing is not None:
-            ct_dct['_pack_'] = packing
-        ct_type = type(cls.__name__ + '_ctype', (ct.Structure,), ct_dct)
-        if not name:
-            name = f'__anonymous_{cls.__NEXT_ANONYMOUS_ID__}__'
-            cls.__NEXT_ANONYMOUS_ID__ += 1
-        new_type = type(name or '<anonymous>',
-                        (cls,),
-                        dict(_packing_=packing,
-                             ctypes_type=ct_type,
-                             c_name=name))
-        if members:
-            new_type.delayed_def(*members)
-        return new_type
+                  for name, cobj in zip(self.cobj_type._members_order_, self))
+        return repr(self.cobj_type) + '(' + ', '.join(params) + ')'
 
     def __getitem__(self, member_id):
         if isinstance(member_id, str):
             member_name = member_id
         else:
-            member_name = self._members_order_[member_id]
-        member_type = self._members_[member_name]
+            member_name = self.cobj_type._members_order_[member_id]
+        member_type = self.cobj_type._members_[member_name]
         struct_adr = ct.addressof(self.ctypes_obj)
-        offset = getattr(self.ctypes_type, member_name).offset
+        offset = getattr(self.cobj_type.ctypes_type, member_name).offset
         ctypes_obj = member_type.ctypes_type.from_address(struct_adr + offset)
-        return member_type(ctypes_obj, _depends_on_=self)
+        return member_type.COBJ_CLASS(member_type, ctypes_obj,_depends_on_=self)
 
-    @classmethod
-    def _get_len(cls):
-        return len(cls._members_)
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name)
 
     @property
     def tuple(self):
@@ -807,153 +915,165 @@ class CStruct(CObj):
 
     @tuple.setter
     def tuple(self, new_tuple):
-        if len(new_tuple) > len(self._members_):
+        if len(new_tuple) > len(self.cobj_type._members_):
             raise ValueError('too much entries in tuple')
         else:
-            self.val = dict(zip(self._members_order_, new_tuple))
+            self.val = dict(zip(self.cobj_type._members_order_, new_tuple))
 
-    def _get_val(self):
+    @property
+    def val(self):
         return {name: cobj.val
-                for name, cobj in zip(self._members_order_, self)}
+                for name, cobj in zip(self.cobj_type._members_order_, self)}
 
-    def _set_val(self, new_val):
-        try:
-            self.mem = memoryview(new_val)
-        except TypeError:
-            if isinstance(new_val, collections.Sequence):
-                new_val = dict(zip(self._members_order_, new_val))
-            for name in self._members_order_:
-                member = self[name]
-                try:
-                    val = new_val[name]
-                except KeyError:
-                    member.val = member.null_val
-                else:
-                    member.val = val
+    @val.setter
+    def val(self, new_val):
+        if isinstance(new_val, collections.Iterator):
+            new_val = list(new_val)
+        if isinstance(new_val, collections.Sequence):
+            new_val = dict(zip(self.cobj_type._members_order_, new_val))
+        for name in self.cobj_type._members_order_:
+            member = self[name]
+            try:
+                val = new_val[name]
+            except KeyError:
+                member.val = member.cobj_type.null_val
+            else:
+                member.val = val
 
-    @classmethod
-    def _get_sizeof(cls):
-        return ct.sizeof(cls.ctypes_type)
-
-    @classmethod
-    def _get_null_val(cls):
-        return {name: type.null_val
-                for name, type in cls._members_.items()}
-
-    @classmethod
-    def _type_equality(cls, other, recursions):
-        if (id(cls), id(other)) in recursions:
-            return True
-        else:
-            new_recursions = recursions | {(id(cls), id(other))}
-            return isinstance(other, CObjType) \
-                   and issubclass(other, CStruct) \
-                   and cls.c_attributes == other.c_attributes \
-                   and other._packing_ == cls._packing_ \
-                   and other._members_order_ == cls._members_order_ \
-                   and all(cls_m._type_equality(other_m, new_recursions)
-                           for cls_m, other_m in zip(cls._members_.values(),
-                                                     other._members_.values()))
-
-    @classmethod
-    def is_anonymous_struct(cls):
-        return cls.c_name.startswith('__anonymous_')
-
-    @classmethod
-    def c_definition(cls, refering_def=''):
-        if cls.is_anonymous_struct():
-            return cls.c_definition_full(refering_def)
-        else:
-            return cls.c_definition_base(refering_def)
-
-    @classmethod
-    def c_definition_base(cls, refering_def=''):
-        result = cls._decorate_c_definition(
-            'struct' if cls.is_anonymous_struct() else f'struct {cls.c_name}')
-        if refering_def:
-            result += ' ' + refering_def
-        return result
-
-    @classmethod
-    def c_definition_full(cls, refering_def=''):
-        space = ' ' if refering_def else ''
-        body = '{\n' \
-               + ''.join(f'\t{line}\n'
-                         for mname in cls._members_order_
-                         for line in (
-                                 cls._members_[mname].c_definition(mname) + ';')
-                                                                .splitlines()) \
-               + '}'
-        return cls.c_definition_base(refering_def=body + space + refering_def)
-
-    @classmethod
-    def delayed_def(cls, *members):
-        for ndx, (name, _) in enumerate(members):
-            if name and not hasattr(cls, name):
-                setattr(cls, name, CMember(name))
-        cls.ctypes_type._fields_ = [(nm, cobj.ctypes_type)
-                                    for nm, cobj in members]
-        cls._members_ = dict(members)
-        cls._members_order_ = [nm for nm,_ in members]
-
-    @classmethod
-    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
-        if already_processed is None:
-            already_processed = set()
-        if not cls.c_name.startswith('__anonymous_') \
-                and cls.c_name not in already_processed:
-            already_processed.add(cls.c_name)
-            for member in cls._members_.values():
-                yield from member.iter_req_custom_types(only_full_defs,
-                                                        already_processed)
-            yield cls.c_name
+    def __len__(self):
+        return len(self.cobj_type._members_)
 
 
-class CUnion(CStruct):
+CStructType.COBJ_CLASS = CStruct
+
+
+class CUnionType(CStructType):
     """This is a dummy yet"""
 
+CUnion = CStruct
 
-class CVector(CObj):
+
+class CVectorType(CIntType):
     """This is a dummy yet"""
 
+    name = 'vector'
 
-class CEnum(CInt):
-    """
-    Dummy implementation for CEnum
-    """
-    bits = 32
-    ctypes_type = ct.c_int
-    c_name = 'enum'
+    def __init__(self, name=None):
+        super().__init__(name or '', 32, False, ct.c_int)
+
+CVector = CInt
+
+
+class CEnumType(CIntType):
+
+    def __init__(self, name=None):
+        super().__init__(name or '', 32, False, ct.c_int)
+
+    def c_definition(self, refering_def=''):
+        return 'enum ' + self.c_name \
+               + (' '+refering_def if refering_def else '')
+
+CEnum = CInt
 
 
 last_tunnelled_exception = None
 
-class CFunc(CObj):
+class CFuncType(CObjType):
 
-    returns = CObj
-    args = ()
-    name = None
-    pyfunc = None
-    language = "C"
     PRECEDENCE = 20
 
-    def __init__(self, init_obj=None, logger=None, _depends_on_=None):
+    def __init__(self, returns:CObjType=None, args:list=None):
+        self.returns = returns
+        self.args = args or []
+        self.language = "C"
+        if returns is None:
+            self.ctypes_returns = None
+        elif issubclass_ctypes_ptr(returns.ctypes_type):
+            self.ctypes_returns = ct.c_void_p
+        else:
+            self.ctypes_returns = returns.ctypes_type
+        self.ctypes_args = tuple(cobj_type.ctypes_type
+                                 for cobj_type in self.args)
+        super().__init__(
+            ct.CFUNCTYPE(self.ctypes_returns, *self.ctypes_args))
+
+    def shallow_eq(self, other):
+        return super().shallow_eq(other) \
+               and ((self.returns is None and other.returns is None)
+                    or (self.returns is not None and other.returns is not None)) \
+               and len(self.args) == len(other.args)
+
+    def shallow_iter_subtypes(self):
+        if self.returns:
+            yield self.returns
+        yield from self.args
+
+    @property
+    def sizeof(self):
+        raise TypeError('cannot retrieve size of c/python function')
+
+    @property
+    def ptr(self):
+        return CFuncPointerType(self)
+
+    @property
+    def null_val(cls):
+        raise TypeError('Function objects do not support null vals')
+
+    def _decorate_c_definition(self, c_def):
+        if self.has_attr('cdecl'):
+            return '__cdecl ' + super()._decorate_c_definition(c_def)
+        else:
+            return super()._decorate_c_definition(c_def)
+
+    def c_definition(self, refering_def=''):
+        if not refering_def:
+            raise TypeError('.c_definition() for CFuncType objects always '
+                            'require a referring_def')
+        if len(self.args) == 0:
+            partype_strs = ('void',)
+        else:
+            partype_strs = (arg.c_definition(f'p{ndx}')
+                            for ndx, arg in enumerate(self.args))
+        rettype = self.returns or CVoidType()
+        deco = (refering_def) + '('+', '.join(partype_strs)+')'
+        return rettype.c_definition(self._decorate_c_definition(deco))
+
+    def __repr__(self):
+        arg_repr_str = ', '.join(map(repr, self.args))
+        attr_calls_str = ''.join(f'.with_attr({attr!r})'
+                                 for attr in sorted(self.c_attributes))
+        return f'CFuncType({self.returns!r}, [{arg_repr_str}]){attr_calls_str}'
+
+    def __call__(self, init_obj=None, _depends_on_=None, logger=None):
+        return self.COBJ_CLASS(self, init_obj, _depends_on_, logger=logger)
+
+
+class CFunc(CObj):
+
+    def __init__(self, cobj_type:CFuncType, init_obj=None, name:str=None,
+                 logger=None, _depends_on_:CObj=None):
+        cobj_type:CFuncType
         if not callable(init_obj):
             raise ValueError('expect callable as first parameter')
-        self.logger = logger
+        self.name = name or (init_obj.__name__
+                             if hasattr(init_obj, '__name__') else None)
         if isinstance_ctypes(init_obj):
             self.language = 'C'
             self.pyfunc = None
-        elif not isinstance(init_obj, CObj):
+        elif isinstance(init_obj, CObj):
+            pass
+        else:
             self.language = 'PYTHON'
             self.pyfunc = init_obj
-            init_obj = self.ctypes_type(self.wrapped_pyfunc(
+            init_obj = cobj_type.ctypes_type(self.wrapped_pyfunc(
                 init_obj,
-                init_obj.__name__ if hasattr(init_obj,'__name__')else '???',
-                self.args,
-                self.returns,
+                self.name,
+                cobj_type.args,
+                cobj_type.returns,
                 logger))
-        super(CFunc, self).__init__(init_obj, _depends_on_)
+        self.logger = logger
+        super(CFunc, self).__init__(cobj_type, init_obj, _depends_on_)
 
     @staticmethod
     def wrapped_pyfunc(pyfunc, name, arg_types, return_type, logger):
@@ -968,7 +1088,7 @@ class CFunc(CObj):
                       for arg_type, arg in zip(arg_types, args)]
             try:
                 if logger:
-                    logger.write('    ' + name)
+                    logger.write('    ' + (name or '<unknown>'))
                     logger.write('('+(', '.join(map(repr, params)))+')')
                 result = pyfunc(*params)
                 if return_type is not None:
@@ -986,262 +1106,116 @@ class CFunc(CObj):
                 return None if return_type is None else return_type.null_val
         return wrapper
 
-    @classmethod
-    def typedef(cls, *args, returns=None):
-        if returns is None:
-            ctypes_returns = None
-        elif issubclass_ctypes_ptr(returns.ctypes_type):
-            ctypes_returns = ct.c_void_p
-        else:
-            ctypes_returns = returns.ctypes_type
-        ctypes_args = [arg.ctypes_type for arg in args]
-        dct = dict(
-            args=args,
-            returns=returns,
-            ctypes_args=ctypes_args,
-            ctypes_returns=ctypes_returns,
-            ctypes_type=ct.CFUNCTYPE(ctypes_returns, *ctypes_args))
-        return type(cls.__name__, (cls,), dct)
-
     def __call__(self, *args):
         global last_tunnelled_exception
-        if len(args) != len(self.args):
-            raise TypeError(f'{self.name}() requires {len(self.args)} '
+        if len(args) != len(self.cobj_type.args):
+            raise TypeError(f'{self.name}() requires {len(self.cobj_type.args)} '
                             f'parameters, but got {len(args)}')
-        args = [arg_type(arg) for arg_type, arg in zip(self.args, args)]
+        args = [arg_cls(arg) for arg_cls, arg in zip(self.cobj_type.args, args)]
         if self.logger:
             self.logger.write(self.name or '???')
             self.logger.write('(' + ', '.join(map(repr, args)) + ')\n')
-        self.ctypes_obj.argtypes = self.ctypes_args
-        self.ctypes_obj.restype = self.ctypes_returns
+        self.ctypes_obj.argtypes = self.cobj_type.ctypes_args
+        self.ctypes_obj.restype = self.cobj_type.ctypes_returns
         result = self.ctypes_obj(*[a.ctypes_obj for a in args])
         if last_tunnelled_exception is not None:
             exc = last_tunnelled_exception
             last_tunnelled_exception = None
             raise exc[0](exc[1]).with_traceback(exc[2])
-        elif self.returns is None:
+        elif self.cobj_type.returns is None:
             return None
         else:
-            result = self.returns(result)
+            result = self.cobj_type.returns(result)
             if self.logger:
                 self.logger.write('-> ' +  repr(result) + '\n')
             return result
-
-    @classmethod
-    def _type_equality(cls, other, recursions):
-        if not isinstance(other, CObjType) or not issubclass(other, CFunc):
-            return False
-        if cls.c_attributes != other.c_attributes:
-            return False
-        if cls.returns is None:
-            if other.returns is not None:
-                return False
-        else:
-            if other.returns is None:
-                return False
-            if not cls.returns._type_equality(other.returns, recursions):
-                return False
-        return all(cls_a._type_equality(other_a, recursions)
-                   for cls_a, other_a in zip(cls.args, other.args))
-
-    @property
-    def name(self):
-        if self.language == 'PYTHON':
-            return self.pyfunc.__name__
-        elif self.language == 'C':
-            try:
-                return self.ctypes_obj.__name__
-            except AttributeError:
-                return f'_func_at_adr_0x{self.adr.val:x}'
 
     @property
     def _as_ctypes_int(self):
         ptr_ptr = ct.pointer(self.ctypes_obj)
         return ct.cast(ptr_ptr, ct.POINTER(ct.c_int)).contents
 
-    def _get_val(self):
-        raise TypeError()
-
-    def _set_val(self, new_val):
-        raise TypeError()
-
     @property
-    def sizeof(self):
-        raise TypeError('cannot retrieve size of c/python function')
+    def val(self):
+        raise TypeError()
+
+    @val.setter
+    def val(self, new_val):
+        raise TypeError()
 
     def __repr__(self):
         if self.language == 'C':
-            return f"{type(self).__name__}(<dll function '{self.name}')"
+            return f"<CFunc of C Function {self.name or '???'!r}>"
         elif self.language == 'PYTHON':
-            return f'{type(self).__name__}({self.pyfunc})'
+            return f"<CFunc of Python Callable {self.name or '???'!r}>"
 
     @property
     def adr(self):
-        ptr_ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_int))
-        return type(self).ptr(ptr_ptr.contents.value, _depends_on_=self)
+        ctypes_ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_int))
+        return self.cobj_type.ptr(ctypes_ptr.contents.value, _depends_on_=self)
 
-    @classmethod
-    def _get_ptr_type(cls):
-        return CFuncPointer.typedef(cls)
+CFuncType.COBJ_CLASS = CFunc
 
-    @classmethod
-    def _get_sizeof(self):
-        raise TypeError('Function objects do not support sizeof')
 
-    @classmethod
-    def _get_null_val(cls):
-        raise TypeError('Function objects do not support null vals')
+class CFuncPointerType(CPointerType):
 
-    @classmethod
-    def _decorate_c_definition(cls, c_def):
-        if cls.has_attr('cdecl'):
-            return '__cdecl ' + super()._decorate_c_definition(c_def)
-        else:
-            return super()._decorate_c_definition(c_def)
-
-    @classmethod
-    def c_definition(cls, refering_def=''):
-        if len(cls.args) == 0:
-            partype_strs = ('void',)
-        else:
-            partype_strs = (arg.c_definition(f'p{ndx}')
-                 for ndx, arg in enumerate(cls.args))
-        rettype = cls.returns or CVoid
-        return rettype.c_definition(cls._decorate_c_definition(refering_def) +
-                                    '('+', '.join(partype_strs)+')')
-
-    @classmethod
-    def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
-        for arg in cls.args:
-            yield from arg.iter_req_custom_types(only_full_defs,
-                                                 already_processed)
-        yield from (cls.returns or CVoid).iter_req_custom_types(
-            only_full_defs, already_processed)
-
+    def __init__(self, base_type:CObjType, ctypes_type=None):
+        if not isinstance(base_type, CFuncType):
+            raise TypeError('Expect CFuncPointerType refer to CFuncType')
+        super().__init__(base_type, ctypes_type or base_type.ctypes_type)
 
 class CFuncPointer(CPointer):
 
-    def __init__(self, init_obj, _depends_on_=None):
+    def __init__(self, cobj_type:CFuncPointerType, init_obj, _depends_on_=None):
         if callable(init_obj) and not isinstance_ctypes(init_obj) and \
                 not isinstance(init_obj, CObj):
-            func_obj = self.base_type(init_obj)
+            cfunc_obj = cobj_type.base_type(init_obj)
             if _depends_on_ is None:
-                _depends_on_ = func_obj
-            super().__init__(func_obj.adr, _depends_on_=_depends_on_)
-        else:
-            super().__init__(init_obj, _depends_on_=_depends_on_)
+                _depends_on_ = cfunc_obj
+            init_obj = cfunc_obj.ctypes_obj
+        super().__init__(cobj_type, init_obj, _depends_on_=_depends_on_)
 
     def __call__(self, *args):
         return self.ref(*args)
-
-    @classmethod
-    def typedef(cls, base_type):
-        return type(base_type.__name__ + '_ptr',
-                    (cls,),
-                    dict(base_type=base_type,
-                         ctypes_type=base_type.ctypes_type))
 
     @property
     def ref(self):
         return self.base_type(self.ctypes_obj)
 
+CFuncPointerType.COBJ_CLASS = CFuncPointer
+
 
 class BuildInDefs:
 
-    class long_long(CInt):
-        bits = 64
-        signed = True
-        ctypes_type = ct.c_longlong
-        c_name = 'long long'
+    long_long = CIntType('long long', 64, True, ct.c_int64)
+    signed_long_long = CIntType('signed long long', 64, True, ct.c_int64)
+    unsigned_long_long = CIntType('unsigned long long', 64, False, ct.c_uint64)
 
-    class signed_long_long(long_long):
-        c_name = 'signed long long'
+    int = CIntType('int', 32, True, ct.c_int32)
+    signed_int = CIntType('signed int', 32, True, ct.c_int32)
+    unsigned_int = CIntType('unsigned int', 32, False, ct.c_uint32)
 
-    class unsigned_long_long(CInt):
-        bits = 64
-        signed = False
-        ctypes_type = ct.c_ulonglong
-        c_name = 'unsigned long long'
+    short = CIntType('short', 16, True, ct.c_int16)
+    signed_short = CIntType('signed short', 16, True, ct.c_int16)
+    unsigned_short = CIntType('unsigned short', 16, False, ct.c_uint16)
 
-    class int(CInt):
-        bits = 8*ct.sizeof(ct.c_int)
-        signed = True
-        ctypes_type = ct.c_int
-        c_name = 'int'
+    long = CIntType('long', 32, True, ct.c_int32)
+    signed_long = CIntType('signed long', 32, True, ct.c_int32)
+    unsigned_long = CIntType('unsigned long', 32, False, ct.c_uint32)
 
-    class unsigned_int(CInt):
-        bits = 8*ct.sizeof(ct.c_int)
-        signed = False
-        ctypes_type = ct.c_uint
-        c_name = 'unsigned int'
+    char = CIntType('char', 8, False, ct.c_char)
+    signed_char = CIntType('signed char', 8, False, ct.c_char)
+    unsigned_char = CIntType('unsigned char', 8, False, ct.c_ubyte)
 
-    class signed_int(int):
-        c_name = 'signed int'
+    float = CFloatType('float', 32, ct.c_float)
 
-    class short(CInt):
-        bits = 8*ct.sizeof(ct.c_short)
-        signed = True
-        ctypes_type = ct.c_short
-        c_name = 'short'
+    double = CFloatType('double', 64, ct.c_double)
 
-    class unsigned_short(CInt):
-        bits = 8*ct.sizeof(ct.c_short)
-        signed = False
-        ctypes_type = ct.c_ushort
-        c_name = 'unsigned short'
+    long_double = CFloatType('long double', 80, ct.c_longdouble)
 
-    class signed_short(short):
-        c_name = 'signed short'
+    _Bool = CIntType('_Bool', 8, False, ct.c_bool)
 
-    class long(CInt):
-        bits = 8*ct.sizeof(ct.c_long)
-        signed = True
-        ctypes_type = ct.c_long
-        c_name = 'long'
-
-    class unsigned_long(CInt):
-        bits = 8*ct.sizeof(ct.c_ulong)
-        signed = False
-        ctypes_type = ct.c_ulong
-        c_name = 'unsigned long'
-
-    class signed_long(long):
-        c_name = 'signed long'
-
-    class char(CInt):
-        bits = 8
-        signed = True
-        ctypes_type = ct.c_byte
-        c_name = 'char'
-
-    class unsigned_char(CInt):
-        bits = 8
-        signed = False
-        ctypes_type = ct.c_ubyte
-        c_name = 'unsigned char'
-
-    class signed_char(char):
-        c_name = 'signed char'
-
-    class float(CFloat):
-        bits = 32
-        ctypes_type = ct.c_float
-        c_name = 'float'
-
-    class double(CFloat):
-        bits = 64
-        ctypes_type = ct.c_double
-        c_name = 'double'
-
-    class long_double(double):
-        pass
-
-    class _Bool(CInt):
-        bits = 8
-        signed = False
-        ctypes_type = ct.c_bool
-
-    void = CVoid
+    void = CVoidType()
 
 
 # add names with '__' in front manually...
