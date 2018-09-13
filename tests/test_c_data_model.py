@@ -1258,6 +1258,10 @@ class TestCFunc:
     def test_getName_onCFunc_returnsNameOfCFunc(self, abs_func):
         assert abs_func.name == 'abs'
 
+    def test_getName_onCFuncWithoutName_returnsAddressOfCFunc(self, dummy_callback, DummyCFunc):
+        func_ptr = DummyCFunc(dummy_callback.ctypes_obj)
+        assert func_ptr.name.endswith(hex(func_ptr.adr.val))
+
     def test_call_onCObjArgs_ok(self, DummyCFunc):
         @DummyCFunc
         def dummy_callback(*args):

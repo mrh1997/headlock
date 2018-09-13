@@ -1028,7 +1028,7 @@ class CFunc(CObj):
             try:
                 return self.ctypes_obj.__name__
             except AttributeError:
-                return f'_func_at_adr_{self.ptr.val}'
+                return f'_func_at_adr_0x{self.adr.val:x}'
 
     @property
     def _as_ctypes_int(self):
