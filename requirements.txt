@@ -1,0 +1,6 @@
+tox
+pytest
+pytest-pycharm
+setuptools
+twine
+.

@@ -1,6 +1,6 @@
 #!python3.6
 # -*- coding: utf-8 -*-
-from distutils.core import setup
+from setuptools import setup
 from headlock import __version__
 from pathlib import Path
 
