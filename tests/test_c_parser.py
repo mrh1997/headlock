@@ -5,7 +5,7 @@ from .helpers import build_tree
 from headlock.libclang.cindex import TranslationUnit
 from headlock.c_parser import CParser, MacroDef, ParseError
 from headlock.c_data_model import BuildInDefs as bd, CFunc, CStruct, CEnum, \
-    CUnion
+    CUnion, CVector
 import os
 
 
@@ -381,6 +381,12 @@ class TestCParser:
                            'extern union unionname varname;',
                            exp_structs={'unionname': union_def},
                            exp_vars={'varname': union_def})
+
+    def test_readFromCursor_onVectorDef_addsVectorToNameSpace(self):
+        vect_def = CVector
+        self.assert_parses('extern int vectorname '
+                           '__attribute__((__vector_size__(8),__may_alias__));',
+                           exp_vars={'vectorname': vect_def})
 
     def test_readFromCursor_onVarDefOfAnonymousStruct_ok(self):
         struct_def = CStruct.typedef(None, ('a', bd.int))

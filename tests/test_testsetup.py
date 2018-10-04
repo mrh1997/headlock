@@ -127,7 +127,7 @@ class TestCModule:
     def test_iterTransunits_onIncludeDirectories_resolvesDirs(self, tmpdir):
         with sim_tsdummy_tree(tmpdir, {'src': {'main.c': b''}, 'inc': {}}) \
                 as base_dir:
-            c_mod = CModule('src\main.c', 'inc')
+            c_mod = CModule('src/main.c', 'inc')
             [transunit] = c_mod.iter_transunits(TSDummy)
             assert transunit.abs_incl_dirs == [base_dir / 'inc']
 

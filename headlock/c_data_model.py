@@ -897,6 +897,10 @@ class CUnion(CStruct):
     """This is a dummy yet"""
 
 
+class CVector(CObj):
+    """This is a dummy yet"""
+
+
 class CEnum(CInt):
     """
     Dummy implementation for CEnum

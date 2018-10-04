@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
     TranslationUnit, Config, TranslationUnitLoadError
-from .c_data_model import BuildInDefs, CObjType, CFunc, CStruct, CEnum
+from .c_data_model import BuildInDefs, CObjType, CFunc, CStruct, CEnum, CVector
 
 
 Config.set_library_path(os.environ.get('LLVM_DIR', r'C:\Program Files (x86)\LLVM\bin'))
@@ -164,6 +164,34 @@ class CParser:
     CDECL_ATTR_TEXT = 'converted-cdecl'
     DEFAULT_PACKING = None
 
+    GCC_VECTOR_BUILTINS = {
+        'addss': '__m128', 'subss': '__m128', 'mulss': '__m128',
+        'divss': '__m128', 'andps': '__m128', 'andnps': '__m128',
+        'orps': '__m128', 'xorps': '__m128', 'movss': '__m128',
+        'cmpgtps': '__m128', 'cmpgeps': '__m128', '__cmpneqps': '__m128',
+        'cmpngtps': '__m128', 'cmpngeps': '__m128', 'cvtsi2ss': '__m128',
+        'movlhps': '__m128', 'movhlps': '__v4sf', 'unpckhps': '__m128',
+        'unpcklps': '__m128', 'loadhps': '__m128', 'loadlps': '__m128',
+        'movntq': '__m128', 'movsd': '__m128d', 'addsd': '__m128d',
+        'subsd': '__m128d', 'mulsd': '__m128d', 'divsd': '__m128d',
+        'andpd': '__m128d', 'andnpd': '__m128d', 'orpd': '__m128d',
+        'xorpd': '__m128d', 'cmpgtpd': '__m128d', 'cmpgepd': '__m128d',
+        'cmpneqpd': '__m128d', 'cmpnltpd': '__m128d', 'cmpngtpd': '__m128d',
+        'cmpngepd': '__m128d', 'cmpordpd': '__m128d', 'cmpunordpd': '__m128d',
+        'cmpeqsd': '__m128d', 'cmpltsd': '__m128d', 'cmplesd': '__m128d',
+        'movq128': '__m128d', 'cvtdq2pd': '__m128d', 'cvtdq2ps': '__m128d',
+        'cvtps2pd': '__m128d', 'cvttsd2si': 'int', 'cvtss2sd': '__m128d',
+        'unpckhpd': '__m128d', 'unpcklpd': '__m128d', 'cvtsi2sd': '__m128d',
+        'loadhpd': '__m128d', 'loadlpd': '__m128d', 'punpckhbw128': '__m128d',
+        'punpckhwd128': '__m128d', 'punpckhdq128': '__m128d',
+        'punpckhqdq128': '__m128d', 'punpcklbw128': '__m128d',
+        'punpcklwd128': '__m128d', 'punpckldq128': '__m128d',
+        'punpcklqdq128': '__m128d', 'pandn128': '__m128d',
+        'pavgb128': '__m128d', 'pavgw128': '__m128d'}
+    GCC_ZEROTYPE_MAP = {
+        '__m128': '_mm_setzero_ps()', '__v4sf': '_mm_setzero_ps()',
+        '__m128d': '_mm_setzero_pd()', 'int': '0'}
+
     def __init__(self, predef_macros=None, include_dirs=None,
                  sys_include_dirs=None, target_compiler=None):
         super().__init__()
@@ -249,6 +277,8 @@ class CParser:
             res = self.convert_struct_from_cursor(type_crs.get_declaration())
         elif type_crs.kind == TypeKind.ENUM:
             res = self.convert_enum_from_cursor(type_crs.get_declaration())
+        elif type_crs.kind == TypeKind.VECTOR:
+            res = CVector
         elif is_function_proto(type_crs):
             if type_crs.get_result().kind == TypeKind.VOID:
                 ret_objtype = None
@@ -337,13 +367,24 @@ class CParser:
         except Exception as exc:
             raise ParseError('Failed to load libclang: ' + str(exc))
         try:
-            predefs = self.predef_macros.items()
+            predefs = self.predef_macros.copy()
+            predefs.update({'_mm_getcsr': '_mm_getcsr_CLANG',
+                            '_mm_setcsr': '_mm_setcsr_CLANG',
+                            '_mm_sfence': '_mm_sfence_CLANG',
+                            '_mm_pause': '_mm_pause_CLANG',
+                            '_mm_clflush': '_mm_clflush_CLANG',
+                            '_mm_lfence': '_mm_lfence_CLANG',
+                            '_mm_mfence': '_mm_mfence_CLANG'})
+            predefs.update({
+                f'__builtin_ia32_{nm}(...)': self.GCC_ZEROTYPE_MAP[tp]
+                for nm, tp in self.GCC_VECTOR_BUILTINS.items()})
             tu = TranslationUnit.from_source(
                 os.fspath(file_name),
                 unsaved_files=[(os.fspath(nm), c.decode('ascii'))
                                for nm, c in patches.items()],
                 args=[f'-I{inc_dir}' for inc_dir in self.include_dirs]
-                     + [f'-D{mname}={mval or ""}' for mname, mval in predefs]
+                     + [f'-D{mname}={mval or ""}'
+                        for mname, mval in predefs.items()]
                      + list(sys_inc_dir_args(self.sys_include_dirs))
                      + ([] if not self.target_compiler
                         else [f'--target={self.target_compiler}']),
