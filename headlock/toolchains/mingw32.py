@@ -70,7 +70,10 @@ class MinGW32ToolChain(ToolChainDriver):
         return mingw_install_dir / 'mingw32'
 
     def sys_incl_dirs(self):
-        return [self.mingw_install_dir / 'i686-w64-mingw32/include']
+        ext_incl_dir_base = self.mingw_install_dir \
+                            / 'lib/gcc/i686-w64-mingw32'
+        return [self.mingw_install_dir / 'i686-w64-mingw32/include'] \
+               + list(ext_incl_dir_base.glob('*.*.*/include'))[:1]
 
     def _run_gcc(self, call_params, dest_file):
         try:
