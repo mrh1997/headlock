@@ -893,6 +893,10 @@ class CStruct(CObj):
             yield cls.c_name
 
 
+class CUnion(CStruct):
+    """This is a dummy yet"""
+
+
 class CEnum(CInt):
     """
     Dummy implementation for CEnum

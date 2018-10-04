@@ -227,6 +227,8 @@ class CParser:
                 self.convert_struct_from_cursor(cursor)
             elif cursor.kind == CursorKind.ENUM_DECL:
                 self.convert_enum_from_cursor(cursor)
+            elif cursor.kind == CursorKind.UNION_DECL:
+                self.convert_struct_from_cursor(cursor)
 
     def convert_type_from_cursor(self, type_crs):
         def is_function_proto(cursor):

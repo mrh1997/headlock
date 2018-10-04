@@ -4,7 +4,8 @@ import pytest
 from .helpers import build_tree
 from headlock.libclang.cindex import TranslationUnit
 from headlock.c_parser import CParser, MacroDef, ParseError
-from headlock.c_data_model import BuildInDefs as bd, CFunc, CStruct, CEnum
+from headlock.c_data_model import BuildInDefs as bd, CFunc, CStruct, CEnum, \
+    CUnion
 import os
 
 
@@ -373,6 +374,13 @@ class TestCParser:
                            'extern struct strctname varname;',
                            exp_structs={'strctname': struct_def},
                            exp_vars={'varname': struct_def})
+
+    def test_readFromCursor_onUnionDef_addsUnionToNameSpace(self):
+        union_def = CUnion.typedef('unionname')
+        self.assert_parses('union unionname { };'
+                           'extern union unionname varname;',
+                           exp_structs={'unionname': union_def},
+                           exp_vars={'varname': union_def})
 
     def test_readFromCursor_onVarDefOfAnonymousStruct_ok(self):
         struct_def = CStruct.typedef(None, ('a', bd.int))
