@@ -279,7 +279,7 @@ class CParser:
             res = self.convert_enum_from_cursor(type_crs.get_declaration())
         elif type_crs.kind == TypeKind.VECTOR:
             res = CVector
-        elif is_function_proto(type_crs):
+        elif is_function_proto(type_crs) and type_crs.kind != TypeKind.TYPEDEF:
             if type_crs.get_result().kind == TypeKind.VOID:
                 ret_objtype = None
             else:

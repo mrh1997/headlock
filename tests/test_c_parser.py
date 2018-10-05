@@ -480,6 +480,13 @@ class TestCParser:
         self.assert_parses('extern void funcname();',
                            exp_funcs={'funcname': CFunc.typedef()})
 
+    def test_readFromCursor_onXXXXX_ok(self):
+        funcproto_def = CFunc.typedef()
+        self.assert_parses('typedef void funcproto(void);\n'
+                           'typedef funcproto * funcptr;\n',
+                           exp_typedefs={'funcproto': funcproto_def,
+                                         'funcptr': funcproto_def.ptr})
+
     def test_readFromCursor_onDllImport_ignore(self):
         self.assert_parses('void __attribute__((dllimport)) funcname(void);')
 
