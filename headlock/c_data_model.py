@@ -608,7 +608,7 @@ class CPointer(CObj):
 
     @classmethod
     def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
-        if not only_full_defs:
+        if not only_full_defs or not issubclass(cls.base_type, CStruct):
             yield from cls.base_type.iter_req_custom_types(only_full_defs,
                                                            already_processed)
 

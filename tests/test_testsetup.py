@@ -508,6 +508,14 @@ class TestTestSetup(object):
         with TSDummy() as ts:
             pass
 
+    def test_onPointerToArrayOfStruct_generatesCorrectMockWrapper(self):
+        class TSDummy(TestSetup): pass
+        self.extend_by_ccode(TSDummy, b'typedef struct strct {} (*type)[1];\n'
+                                      b'void func(type param);',
+                             'ptr_to_arr_of_strct.c')
+        with TSDummy() as ts:
+            pass
+
     def test_registerUnloadEvent_onRegisteredEvent_isCalledOnUnload(self):
         TSDummy = self.cls_from_ccode(b'', 'test_register_unload_ev.c')
         ts = TSDummy()

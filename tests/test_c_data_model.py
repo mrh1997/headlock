@@ -668,19 +668,22 @@ class TestCPointer:
         assert DummyInt.ptr.with_attr('volatile').c_definition('ab') \
                == 'DummyInt *volatile ab'
 
-    def test_iterReqCustomTypes_returnsReferredTypeElementaryTypes(self):
-        class X(DummyInt):
-            @classmethod
-            def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
-                return iter(["test", "test2"])
-        assert list(X.ptr.iter_req_custom_types()) == ["test", "test2"]
+    def test_iterReqCustomTypes_onBaseTypeIsStruct_returnsReferredTypeElementaryTypes(self):
+        BaseType = headlock.c_data_model.CStruct.typedef('strct')
+        assert list(BaseType.ptr.iter_req_custom_types()) == ['strct']
 
-    def test_iterReqCustomTypes_onOnlyFullDef_doesNotReturnReferredTypeElementaryTypes(self):
+    def test_iterReqCustomTypes_onOnlyFullDefAndBaseTypeIsStruct_doesNotReturnReferredTypeElementaryTypes(self):
+        BaseType = headlock.c_data_model.CStruct.typedef('strct')
+        assert list(BaseType.ptr.iter_req_custom_types(only_full_defs=True)) \
+               == []
+
+    def test_iterReqCustomTypes_onOnlyFullDefAndBaseTypeIsNotStruct_forwardsToBaseType(self):
         class X(DummyInt):
             @classmethod
             def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
-                raise AssertionError('Must Not be called')
-        assert list(X.ptr.iter_req_custom_types(only_full_defs=True)) == []
+                return iter(['name1', 'name2'])
+        assert list(X.ptr.iter_req_custom_types(only_full_defs=True)) \
+               == ['name1', 'name2']
 
 
 class TestCArray:
