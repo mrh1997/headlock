@@ -1142,6 +1142,11 @@ class TestCStruct:
         class DerivedStruct(DummyStruct): pass
         assert DerivedStruct.c_definition() == 'struct DummyStruct'
 
+    def test_cDefinition_onAnonymousStruct_returnsFullDefinitionWithoutName(self):
+        AnonymousStruct = headlock.c_data_model.CStruct.typedef(None)
+        assert AnonymousStruct.c_definition('x') \
+               == 'struct {\n} x'
+
     def test_cDefinitionFull_onEmptyStruct_ok(self):
         empty_struct = headlock.c_data_model.CStruct.typedef('strctname')
         assert empty_struct.c_definition_full() == 'struct strctname {\n}'
@@ -1168,6 +1173,19 @@ class TestCStruct:
                    '\tstruct DummyStruct inner_strct;\n'
                    '}')
 
+    def test_cDefinitionFull_onNestedAnonymousStructs_indentCorrectly(self, ):
+        NestedStruct = headlock.c_data_model.CStruct.typedef(
+            'NestedStruct',
+            ('inner_strct', headlock.c_data_model.CStruct.typedef(
+                None,
+                ('member', DummyInt))))
+        assert NestedStruct.c_definition_full() \
+               == ('struct NestedStruct {\n'
+                   '\tstruct {\n'
+                   '\t\tDummyInt member;\n'
+                   '\t} inner_strct;\n'
+                   '}')
+
     @pytest.mark.parametrize('only_full_defs', [True, False])
     def test_iterReqCustomTypes_returnsNameOfStructBeforeNamesOfSubTypes(self, DummyStruct, only_full_defs):
         TestStruct = headlock.c_data_model.CStruct.typedef(
@@ -1185,6 +1203,10 @@ class TestCStruct:
         TestStruct = headlock.c_data_model.CStruct.typedef('TestStruct')
         ConstTestStruct = TestStruct.with_attr('const')
         assert list(ConstTestStruct.iter_req_custom_types()) == ['TestStruct']
+
+    def test_iterReqCustomTypes_onAnonymousStruct_doesReturnNothing(self, DummyStruct):
+        AnonymousTestStruct = headlock.c_data_model.CStruct.typedef(None)
+        assert list(AnonymousTestStruct.iter_req_custom_types()) == []
 
 
 @pytest.fixture

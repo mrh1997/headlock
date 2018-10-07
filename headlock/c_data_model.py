@@ -856,8 +856,20 @@ class CStruct(CObj):
                                                      other._members_.values()))
 
     @classmethod
+    def is_anonymous_struct(cls):
+        return cls.c_name.startswith('__anonymous_')
+
+    @classmethod
     def c_definition(cls, refering_def=''):
-        result = cls._decorate_c_definition(f'struct {cls.c_name}')
+        if cls.is_anonymous_struct():
+            return cls.c_definition_full(refering_def)
+        else:
+            return cls.c_definition_base(refering_def)
+
+    @classmethod
+    def c_definition_base(cls, refering_def=''):
+        result = cls._decorate_c_definition(
+            'struct' if cls.is_anonymous_struct() else f'struct {cls.c_name}')
         if refering_def:
             result += ' ' + refering_def
         return result
@@ -866,10 +878,13 @@ class CStruct(CObj):
     def c_definition_full(cls, refering_def=''):
         space = ' ' if refering_def else ''
         body = '{\n' \
-               + ''.join(f'\t{cls._members_[mname].c_definition(mname)};\n'
-                         for mname in cls._members_order_) \
+               + ''.join(f'\t{line}\n'
+                         for mname in cls._members_order_
+                         for line in (
+                                 cls._members_[mname].c_definition(mname) + ';')
+                                                                .splitlines()) \
                + '}'
-        return cls.c_definition(refering_def=body + space + refering_def)
+        return cls.c_definition_base(refering_def=body + space + refering_def)
 
     @classmethod
     def delayed_def(cls, *members):
@@ -885,7 +900,8 @@ class CStruct(CObj):
     def iter_req_custom_types(cls, only_full_defs=False,already_processed=None):
         if already_processed is None:
             already_processed = set()
-        if cls.c_name not in already_processed:
+        if not cls.c_name.startswith('__anonymous_') \
+                and cls.c_name not in already_processed:
             already_processed.add(cls.c_name)
             for member in cls._members_.values():
                 yield from member.iter_req_custom_types(only_full_defs,

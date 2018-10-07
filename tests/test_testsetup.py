@@ -478,8 +478,7 @@ class TestTestSetup(object):
             assert issubclass(ts.enum.enum_t, CEnum)
 
     def test_onTestSetupComposedOfDifferentCModules_parseAndCompileCModulesIndependently(self):
-        class TSDummy(TestSetup):
-            DELAYED_PARSEERROR_REPORTING = False
+        class TSDummy(TestSetup): pass
         self.extend_by_ccode(TSDummy, b'#if defined(A)\n'
                                       b'#error A not allowed\n'
                                       b'#endif\n'
@@ -497,6 +496,17 @@ class TestTestSetup(object):
         with TSDummy() as ts:
             assert ts.a.val == 1
             assert ts.b.val == 2
+
+    def test_onSameStructWithAnonymousChildInDifferentModules_generateCorrectMockWrapper(self):
+        class TSDummy(TestSetup): pass
+        self.extend_by_ccode(TSDummy, b'struct s { struct { int mm; } m; };\n'
+                                      b'int func1(struct s p);\n',
+                             'anonymstruct_mod1.c')
+        self.extend_by_ccode(TSDummy, b'struct s { struct { int mm; } m; };\n'
+                                      b'int func2(struct s p);\n',
+                             'anonymstruct_mod2.c')
+        with TSDummy() as ts:
+            pass
 
     def test_registerUnloadEvent_onRegisteredEvent_isCalledOnUnload(self):
         TSDummy = self.cls_from_ccode(b'', 'test_register_unload_ev.c')
