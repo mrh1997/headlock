@@ -87,12 +87,12 @@ class CModuleDecoratorBase:
         SubCls.__name__ = parent_cls.__name__
         SubCls.__qualname__ = parent_cls.__qualname__
         SubCls.__module__ = parent_cls.__module__
-        for transunit in self.iter_transunits(SubCls):
+        for transunit in self.iter_transunits(deco_cls=parent_cls):
             SubCls.__extend_by_transunit__(transunit)
         return SubCls
 
     @abc.abstractmethod
-    def iter_transunits(self, cls):
+    def iter_transunits(self, deco_cls):
         return iter([])
 
 
@@ -102,22 +102,29 @@ class CModule(CModuleDecoratorBase):
     multiple source-filenames and parametersets to be combined into one module.
     """
 
-    def __init__(self, *src_filenames, **predef_macros):
+    def __init__(self, *src_filenames, include_dirs=(),
+                 predef_macros=None, **kw_predef_macros):
         self.src_filenames = list(map(Path, src_filenames))
-        self.predef_macros = predef_macros
+        self.include_dirs = include_dirs
+        self.predef_macros = kw_predef_macros
+        if predef_macros:
+            self.predef_macros.update(predef_macros)
 
-    def iter_transunits(self, cls):
-        abs_src_filenames = []
-        abs_incl_dirs = []
-        for src_filename in self.src_filenames:
-            item_path = self.resolve_path(src_filename, cls)
-            if item_path.is_dir():
-                abs_incl_dirs.append(item_path)
-            elif item_path.is_file():
-                abs_src_filenames.append(item_path)
-            else:
-                raise IOError('Cannot find C-File / Include-Dir path {}'
-                              .format(item_path))
+    def iter_transunits(self, deco_cls):
+        abs_src_filenames = [self.resolve_path(p, deco_cls)
+                             for p in self.src_filenames]
+        not_existing_src_filenames = [str(p) for p in abs_src_filenames
+                                      if not p.is_file()]
+        if not_existing_src_filenames:
+            raise IOError('Cannot find C-File(s): '
+                          + ', '.join(not_existing_src_filenames))
+        abs_incl_dirs = [self.resolve_path(p, deco_cls)
+                         for p in self.include_dirs]
+        not_existing_incl_dirs = [str(p) for p in abs_incl_dirs
+                                  if not p.is_dir()]
+        if not_existing_incl_dirs:
+            raise IOError('Cannot find Include directorie(s): '
+                          + ', '.join(not_existing_incl_dirs))
         for abs_src_filename in abs_src_filenames:
             yield TransUnit(self.src_filenames[0].stem,
                             abs_src_filename,
@@ -125,8 +132,8 @@ class CModule(CModuleDecoratorBase):
                             self.predef_macros)
 
     @staticmethod
-    def resolve_path(filename, cls):
-        mod = sys.modules[cls.__module__]
+    def resolve_path(filename, deco_cls) -> Path:
+        mod = sys.modules[deco_cls.__module__]
         return (Path(mod.__file__).parent / filename).resolve()
 
 

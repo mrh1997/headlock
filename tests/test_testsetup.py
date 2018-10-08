@@ -11,8 +11,18 @@ from headlock.testsetup import TestSetup, MethodNotMockedError, \
 from headlock.c_data_model import CStruct, CEnum, CInt
 
 
-class TSDummy:
-    pass
+@pytest.fixture
+def TSDummy(tmpdir):
+    saved_sys_path = sys.path[:]
+    sys.path.append(str(tmpdir))
+    tmpdir.join('testsetup_dummy.py').write(
+        'class Container:\n'
+        '    class TSDummy:\n'
+        '        pass\n')
+    from testsetup_dummy import Container
+    sys.path = saved_sys_path
+    return Container.TSDummy
+
 
 @contextlib.contextmanager
 def sim_tsdummy_tree(base_dir, tree):
@@ -58,26 +68,23 @@ class TestCompileError:
 
 class TestCModuleDecoratorBase:
 
-    class TSDummy:
-        @classmethod
-        def __extend_by_transunit__(cls, transunit): pass
-
-    def test_call_onCls_returnsDerivedClassWithSameNameAndModule(self):
+    def test_call_onCls_returnsDerivedClassWithSameNameAndModule(self, TSDummy):
         c_mod_decorator = CModuleDecoratorBase()
-        TSDecorated = c_mod_decorator(self.TSDummy)
-        assert issubclass(TSDecorated, self.TSDummy) \
-               and TSDecorated is not self.TSDummy
+        TSDecorated = c_mod_decorator(TSDummy)
+        assert issubclass(TSDecorated, TSDummy) \
+               and TSDecorated is not TSDummy
         assert TSDecorated.__name__ == 'TSDummy'
-        assert TSDecorated.__qualname__ == 'TestCModuleDecoratorBase.TSDummy'
-        assert TSDecorated.__module__ == self.TSDummy.__module__
+        assert TSDecorated.__qualname__ == 'Container.TSDummy'
+        assert TSDecorated.__module__ == 'testsetup_dummy'
 
-    @patch.object(TSDummy, '__extend_by_transunit__')
-    def test_call_onCls_calls(self, __extend_by_transunit__):
+    def test_call_onCls_calls(self, TSDummy):
+        TSDummy.__extend_by_transunit__ = Mock()
         deco = CModuleDecoratorBase()
         tu1, tu2 = Mock(), Mock()
-        deco.iter_transunits = Mock(return_value=[tu1, tu2])
-        TSDecorated = deco(self.TSDummy)
-        assert __extend_by_transunit__.call_args_list == [call(tu1), call(tu2)]
+        deco.iter_transunits = Mock(return_value=iter([tu1, tu2]))
+        TSDecorated = deco(TSDummy)
+        assert TSDummy.__extend_by_transunit__.call_args_list \
+               == [call(tu1), call(tu2)]
 
 
 class TestCModule:
@@ -107,7 +114,7 @@ class TestCModule:
     def test_iterTransunits_retrievesAndResolvesIncludeDirs(self, tmpdir):
         with sim_tsdummy_tree(tmpdir, {'src': b'', 'd1': {}, 'd2': {}}) \
                 as base_dir:
-            c_mod = CModule('src', 'd1', 'd2')
+            c_mod = CModule('src', include_dirs=['d1', 'd2'])
             [transunit] = c_mod.iter_transunits(TSDummy)
             assert transunit.abs_incl_dirs == [base_dir / 'd1', base_dir / 'd2']
 
@@ -124,24 +131,18 @@ class TestCModule:
             [transunit] = c_mod.iter_transunits(TSDummy)
             assert transunit.predef_macros == {'MACRO1':11, 'MACRO2':22}
 
-    def test_iterTransunits_onIncludeDirectories_resolvesDirs(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'src': {'main.c': b''}, 'inc': {}}) \
-                as base_dir:
-            c_mod = CModule('src/main.c', 'inc')
-            [transunit] = c_mod.iter_transunits(TSDummy)
-            assert transunit.abs_incl_dirs == [base_dir / 'inc']
-
     def test_iterTransunits_onInvalidPath_raiseIOError(self):
         c_mod = CModule('test_invalid.c')
         with pytest.raises(IOError):
             list(c_mod.iter_transunits(TSDummy))
 
-    def test_resolvePath_onRelativeFileAndRelativeModulePath_returnsAbsolutePath(self, tmpdir):
+    def test_resolvePath_onRelativeFileAndRelativeModulePath_returnsAbsolutePath(self, TSDummy, tmpdir):
         module = sys.modules[TSDummy.__module__]
         with build_tree(tmpdir, {'file.py': b'', 'file.c': b''}) as dir:
             os.chdir(dir)
             with patch.object(module, '__file__', 'file.py'):
                 assert CModule.resolve_path('file.c', TSDummy) == dir / 'file.c'
+
 
 class TestTestSetup(object):
 
