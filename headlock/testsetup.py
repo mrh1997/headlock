@@ -1,5 +1,5 @@
 import ctypes as ct
-import functools
+import typing
 import os
 import sys
 import weakref
@@ -44,35 +44,24 @@ class CustomTypeContainer:
     pass
 
 
-@functools.total_ordering
-class TransUnit:
-
-    def __init__(self, subsys_name, abs_src_filename, abs_incl_dirs,
-                 predef_macros):
-        self.subsys_name = subsys_name
-        self.abs_src_filename = abs_src_filename
-        self.abs_incl_dirs = abs_incl_dirs
-        self.predef_macros = predef_macros
-
-    def __repr__(self):
-        return f'{type(self).__name__}({self.subsys_name}, ' \
-               f'{self.abs_src_filename}, {self.abs_incl_dirs}, ' \
-               f'{self.predef_macros})'
-
-    def __iter_attrs(self):
-        yield self.subsys_name
-        yield self.abs_src_filename
-        yield from self.abs_incl_dirs
-        yield from self.predef_macros.items()
+class TransUnit(typing.NamedTuple):
+    """
+    Represents a reference to a "translation unit" which is a unique
+    translation of C file. As the preprocessor allows a lot of different
+    translations of the same code base (depending on the macros passed by
+    command line and the include files) this object provides all information
+    to get unique preprocessor runs.
+    """
+    subsys_name:Path
+    abs_src_filename:Path
+    abs_incl_dirs:List[Path] = []
+    predef_macros:Dict[str, Any] = {}
 
     def __hash__(self):
-        return hash(tuple(self.__iter_attrs()))
-
-    def __eq__(self, other):
-        return tuple(self.__iter_attrs()) == tuple(other.__iter_attrs())
-
-    def __lt__(self, other):
-        return tuple(self.__iter_attrs()) < tuple(other.__iter_attrs())
+        return sum(map(hash, [self.subsys_name,
+                              self.abs_src_filename,
+                              tuple(self.abs_incl_dirs),
+                              tuple(sorted(self.predef_macros.items()))]))
 
 
 class CModuleDecoratorBase:
