@@ -328,8 +328,8 @@ class CParser:
                 if not has_attr(sub_cursor, CursorKind.ANNOTATE_ATTR,
                                 self.INLINE_ATTR_TEXT) \
                         and not has_attr(sub_cursor, CursorKind.DLLIMPORT_ATTR)\
-                        and not self.is_sys_func(
-                            sub_cursor.extent.start.file.name):
+                        and not self.is_sys_hdr(
+                            Path(sub_cursor.extent.start.file.name)):
                     cobj_type = self.convert_type_from_cursor(sub_cursor.type)
                     if has_attr(sub_cursor, CursorKind.ANNOTATE_ATTR,
                                 self.CDECL_ATTR_TEXT):
@@ -340,18 +340,17 @@ class CParser:
                         self.implementations.add(sub_cursor.spelling)
                 elif sub_cursor.spelling in self.funcs:
                     del self.funcs[sub_cursor.spelling]
-                    if sub_cursor.spelling in self.implementations:
-                        del self.implementations[sub_cursor.spelling]
             elif sub_cursor.kind == CursorKind.TYPEDEF_DECL:
                 typedef_cursor = sub_cursor.underlying_typedef_type
                 cobj_type = self.convert_type_from_cursor(typedef_cursor)
                 self.typedefs[sub_cursor.displayname] = cobj_type
             elif sub_cursor.kind == CursorKind.VAR_DECL \
                and sub_cursor.storage_class != StorageClass.STATIC:
-                cobj_type = self.convert_type_from_cursor(sub_cursor.type)
-                self.vars[sub_cursor.displayname] = cobj_type
-                if sub_cursor.storage_class == StorageClass.NONE:
-                    self.implementations.add(sub_cursor.displayname)
+                if not self.is_sys_hdr(Path(sub_cursor.extent.start.file.name)):
+                    cobj_type = self.convert_type_from_cursor(sub_cursor.type)
+                    self.vars[sub_cursor.displayname] = cobj_type
+                    if sub_cursor.storage_class == StorageClass.NONE:
+                        self.implementations.add(sub_cursor.displayname)
             else:
                 self.read_datatype_decl_from_cursor(sub_cursor)
 
@@ -393,9 +392,10 @@ class CParser:
             raise FileNotFoundError(
                 f'File {file_name} cannot be opened/is invalid') from e
         self.source_files.add(Path(file_name).resolve())
-        self.source_files |= {Path(i.include.name).resolve()
-                              for i in tu.get_includes()
-                              if not self.is_sys_func(i.include.name)}
+        for incl_file_obj in tu.get_includes():
+            incl_file_path = Path(incl_file_obj.include.name).resolve()
+            if not self.is_sys_hdr(incl_file_path):
+                self.source_files.add(incl_file_path)
         errors = [diag for diag in tu.diagnostics
                    if diag.severity >= diag.Error]
         if errors:
@@ -412,6 +412,12 @@ class CParser:
             macro_def = MacroDef.create_from_srccode(macro_text.decode('ascii'))
             self.macros[macro_name] = macro_def
 
-    def is_sys_func(self, src_filename):
-        return any(src_filename.startswith(os.fspath(sysdir))
-                   for sysdir in self.sys_include_dirs)
+    def is_sys_hdr(self, src_filename:Path):
+        def is_parent_of_src_filename(root_dir):
+            try:
+                src_filename.relative_to(root_dir)
+            except ValueError:
+                return False
+            else:
+                return True
+        return any(map(is_parent_of_src_filename, self.sys_include_dirs))

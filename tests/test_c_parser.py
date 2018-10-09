@@ -597,13 +597,15 @@ class TestCParser:
         parser.read(basedir / 'test.c')
         assert 'func' in parser.funcs
 
-    def test_read_onSystemIncludeDirs_searchPassedSysIncludeDirsAndIgnoreFuncsAndSourceFiles(self, tmpdir):
+    def test_read_onSystemIncludeDirs_searchPassedSysIncludeDirsAndIgnoreFuncsAndVarsAndSourceFiles(self, tmpdir):
         basedir = build_tree(tmpdir, {'test.c': b'#include <test.h>',
                                       'sys-incl': {
-                                          'test.h': b'int func(void);'}})
+                                          'test.h': b'int func(void);\n'
+                                                    b'extern int var;'}})
         parser = CParser(sys_include_dirs=[basedir / 'sys-incl'])
         parser.read(basedir / 'test.c')
         assert 'func' not in parser.funcs
+        assert 'var' not in parser.vars
         assert parser.source_files == {basedir / 'test.c'}
 
     def test_read_onPredefinedMacroDict_doesNotModifyPredefinedMacroDict(self, tmpdir):
