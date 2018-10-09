@@ -368,6 +368,22 @@ class TestCParser:
                            exp_structs={'strctname': struct_def},
                            exp_typedefs={'typename': struct_def})
 
+    def test_readFromCursor_onBitField_isReadAsStruct(self):
+        # this is not correct, but required as temporary solution to keep
+        # code with bitfields parsable.
+        struct_def = CStruct.typedef(
+            'strctname', ('a', bd.int), ('b', bd.int))
+        self.assert_parses('struct strctname { int a:10; int b:20; };',
+                           exp_structs={'strctname': struct_def})
+
+    def test_readFromCursor_onBitFieldWithUnnamedMember_isRead(self):
+        # this is not correct, but required as temporary solution to keep
+        # code with bitfields parsable.
+        struct_def = CStruct.typedef(
+            'strctname', ('', bd.int), ('a', bd.int), ('', bd.int))
+        self.assert_parses('struct strctname { int:1; int a:1; int:1; };',
+                           exp_structs={'strctname': struct_def})
+
     def test_readFromCursor_onVarDefOfTypeStruct_ok(self):
         struct_def = CStruct.typedef('structname')
         self.assert_parses('struct strctname { };'
