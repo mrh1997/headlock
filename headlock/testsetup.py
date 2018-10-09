@@ -1,11 +1,11 @@
 import ctypes as ct
-import typing
 import os
 import sys
 import weakref
 import abc
 import hashlib
 import copy
+from typing import List, Iterator, Dict, NamedTuple, Any, Tuple, Union
 
 from pathlib import Path
 
@@ -44,7 +44,7 @@ class CustomTypeContainer:
     pass
 
 
-class TransUnit(typing.NamedTuple):
+class TransUnit(NamedTuple):
     """
     Represents a reference to a "translation unit" which is a unique
     translation of C file. As the preprocessor allows a lot of different
@@ -52,7 +52,7 @@ class TransUnit(typing.NamedTuple):
     command line and the include files) this object provides all information
     to get unique preprocessor runs.
     """
-    subsys_name:Path
+    subsys_name:str
     abs_src_filename:Path
     abs_incl_dirs:List[Path] = []
     predef_macros:Dict[str, Any] = {}
@@ -78,11 +78,17 @@ class CModuleDecoratorBase:
         SubCls.__module__ = parent_cls.__module__
         for transunit in self.iter_transunits(deco_cls=parent_cls):
             SubCls.__extend_by_transunit__(transunit)
+        req_libs, lib_dirs = self.get_lib_search_params(deco_cls=parent_cls)
+        SubCls.__extend_by_lib_search_params__(req_libs, lib_dirs)
         return SubCls
 
     @abc.abstractmethod
-    def iter_transunits(self, deco_cls):
+    def iter_transunits(self, deco_cls: 'TestSetup') -> Iterator[TransUnit]:
         return iter([])
+
+    def get_lib_search_params(self, deco_cls: 'TestSetup') \
+            -> Tuple[List[str], List[str]]:
+        return [], []
 
 
 class CModule(CModuleDecoratorBase):
@@ -91,37 +97,52 @@ class CModule(CModuleDecoratorBase):
     multiple source-filenames and parametersets to be combined into one module.
     """
 
-    def __init__(self, *src_filenames, include_dirs=(),
-                 predef_macros=None, **kw_predef_macros):
+    def __init__(self, *src_filenames:Union[str, Path],
+                 include_dirs:List[Union[os.PathLike, str]]=(),
+                 library_dirs:List[Union[os.PathLike, str]]=(),
+                 required_libs:List[str]=(),
+                 predef_macros:Dict[str, Any]=None,
+                 **kw_predef_macros:Any):
+        if len(src_filenames) == 0:
+            raise ValueError('expect at least one positional argument as C '
+                             'source filename')
         self.src_filenames = list(map(Path, src_filenames))
-        self.include_dirs = include_dirs
+        self.include_dirs = list(map(Path, include_dirs))
+        self.library_dirs = list(map(Path, library_dirs))
+        self.required_libs = required_libs
         self.predef_macros = kw_predef_macros
         if predef_macros:
             self.predef_macros.update(predef_macros)
 
     def iter_transunits(self, deco_cls):
-        abs_src_filenames = [self.resolve_path(p, deco_cls)
-                             for p in self.src_filenames]
-        not_existing_src_filenames = [str(p) for p in abs_src_filenames
-                                      if not p.is_file()]
-        if not_existing_src_filenames:
-            raise IOError('Cannot find C-File(s): '
-                          + ', '.join(not_existing_src_filenames))
-        abs_incl_dirs = [self.resolve_path(p, deco_cls)
-                         for p in self.include_dirs]
-        not_existing_incl_dirs = [str(p) for p in abs_incl_dirs
-                                  if not p.is_dir()]
-        if not_existing_incl_dirs:
-            raise IOError('Cannot find Include directorie(s): '
-                          + ', '.join(not_existing_incl_dirs))
-        for abs_src_filename in abs_src_filenames:
-            yield TransUnit(self.src_filenames[0].stem,
-                            abs_src_filename,
-                            abs_incl_dirs,
-                            self.predef_macros)
+        srcs = self._resolve_and_check_list('C Sourcefile', self.src_filenames,
+                                            Path.is_file, deco_cls)
+        for src in srcs:
+            yield TransUnit(
+                self.src_filenames[0].stem,
+                src,
+                self._resolve_and_check_list(
+                    'Include directorie', self.include_dirs, Path.is_dir,
+                    deco_cls),
+                self.predef_macros)
+
+    def get_lib_search_params(self, deco_cls):
+        return (list(self.required_libs),
+                self._resolve_and_check_list('Library Directorie',
+                                             self.library_dirs, Path.is_dir,
+                                             deco_cls))
+
+    @classmethod
+    def _resolve_and_check_list(cls, name, paths, valid_check, deco_cls):
+        abs_paths = [cls.resolve_path(p, deco_cls) for p in paths]
+        invalid_paths = [str(p) for p in abs_paths if not valid_check(p)]
+        if invalid_paths:
+            raise IOError('Cannot find ' + name + '(s): '
+                          + ', '.join(invalid_paths))
+        return abs_paths
 
     @staticmethod
-    def resolve_path(filename, deco_cls) -> Path:
+    def resolve_path(filename, deco_cls:'TestSetup') -> Path:
         mod = sys.modules[deco_cls.__module__]
         return (Path(mod.__file__).parent / filename).resolve()
 
@@ -148,13 +169,15 @@ class ToolChainDriver:
         """
 
     @abc.abstractmethod
-    def exe_path(self, build_dir, name):
+    def exe_path(self, name:str, build_dir:Path):
         """
-        returns name of executable image
+        returns name of executable image/shared object library/dll
         """
 
     @abc.abstractmethod
-    def build(self, transunits, build_dir, name):
+    def build(self, name:str, build_dir:Path,
+              transunits:List[TransUnit], req_libs:List[str],
+              lib_dirs:List[Path]):
         """
         builds executable image from translation units 'transunits'
         """
@@ -179,6 +202,9 @@ class TestSetup(BuildInDefs):
     _delayed_exc = None
 
     __transunits__ = frozenset()
+
+    __required_libraries = []
+    __library_directories = []
 
     ### provide structs with packing 1
 
@@ -233,7 +259,7 @@ class TestSetup(BuildInDefs):
             return rev_static_qualname + '_' + hash.hexdigest()[:8]
 
     @classmethod
-    def __extend_by_transunit__(cls, transunit):
+    def __extend_by_transunit__(cls, transunit:TransUnit):
         predef_macros = cls.__TOOLCHAIN__.sys_predef_macros()
         predef_macros.update(transunit.predef_macros)
         parser = cls.__parser_factory__(
@@ -267,6 +293,16 @@ class TestSetup(BuildInDefs):
 
         if cls.__ts_name__ is None:
             cls.__ts_name__ = transunit.abs_src_filename.stem
+
+    @classmethod
+    def __extend_by_lib_search_params__(cls, req_libs:List[str],
+                                        lib_dirs:List[Path]=()):
+        cls.__required_libraries = cls.__required_libraries[:] + \
+                                   [req_lib for req_lib in req_libs
+                                    if req_lib not in cls.__required_libraries]
+        cls.__library_directories = cls.__library_directories[:] + \
+                                    [libdir for libdir in lib_dirs
+                                     if libdir not in cls.__library_directories]
 
     def __init__(self):
         super(TestSetup, self).__init__()
@@ -329,13 +365,15 @@ class TestSetup(BuildInDefs):
             self.get_build_dir().mkdir(parents=True)
         mock_proxy_path = self.__build_mock_proxy__()
         mock_tu = TransUnit('mocks', mock_proxy_path, [], {})
-        self.__TOOLCHAIN__.build(sorted(self.__transunits__ | {mock_tu}),
+        self.__TOOLCHAIN__.build(self.get_ts_name(),
                                  self.get_build_dir(),
-                                 self.get_ts_name())
+                                 sorted(self.__transunits__ | {mock_tu}),
+                                 self.__required_libraries,
+                                 self.__library_directories)
 
     def __load__(self):
-        exepath = self.__TOOLCHAIN__.exe_path(self.get_build_dir(),
-                                              self.get_ts_name())
+        exepath = self.__TOOLCHAIN__.exe_path(self.get_ts_name(),
+                                              self.get_build_dir())
         self.__dll = ct.CDLL(os.fspath(exepath))
         try:
             for name, cobj_type in self.__globals.items():

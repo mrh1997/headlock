@@ -88,10 +88,10 @@ class MinGW32ToolChain(ToolChainDriver):
             if completed_proc.returncode != 0:
                 raise BuildError(completed_proc.stderr, dest_file)
 
-    def exe_path(self, build_dir, name):
+    def exe_path(self, name, build_dir):
         return build_dir / '__headlock__.dll'
 
-    def build(self, transunits, build_dir, name):
+    def build(self, name, build_dir, transunits, req_libs, lib_dirs):
         if (tuple(transunits), build_dir) in BUILD_CACHE:
             return
         for tu in transunits:
@@ -104,10 +104,12 @@ class MinGW32ToolChain(ToolChainDriver):
                              for mname, mval in tu.predef_macros.items()]
                           + self.ADDITIONAL_COMPILE_OPTIONS,
                           obj_file_path)
-        exe_file_path = self.exe_path(build_dir, name)
+        exe_file_path = self.exe_path(name, build_dir)
         self._run_gcc([str(build_dir / (tu.abs_src_filename.stem + '.o'))
                        for tu in transunits]
                       + ['-shared', '-o', os.fspath(exe_file_path)]
+                      + ['-l' + req_lib for req_lib in req_libs]
+                      + ['-L' + str(lib_dir) for lib_dir in lib_dirs]
                       + self.ADDITIONAL_LINK_OPTIONS,
                       exe_file_path)
         BUILD_CACHE.add((tuple(transunits), build_dir))

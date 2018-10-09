@@ -2,7 +2,7 @@ import contextlib
 import sys
 import os
 from pathlib import Path
-from unittest.mock import patch, Mock, MagicMock, call
+from unittest.mock import patch, Mock, MagicMock, call, ANY
 import pytest
 
 from .helpers import build_tree
@@ -18,10 +18,16 @@ def TSDummy(tmpdir):
     tmpdir.join('testsetup_dummy.py').write(
         'class Container:\n'
         '    class TSDummy:\n'
-        '        pass\n')
+        '        @classmethod\n'
+        '        def __extend_by_transunit__(cls, transunit):\n'
+        '            pass\n'
+        '        @classmethod\n'
+        '        def __extend_by_lib_search_params__(cls, req_libs,lib_dirs):\n'
+        '            pass\n')
     from testsetup_dummy import Container
     sys.path = saved_sys_path
-    return Container.TSDummy
+    yield Container.TSDummy
+    del sys.modules['testsetup_dummy']
 
 
 @contextlib.contextmanager
@@ -77,14 +83,29 @@ class TestCModuleDecoratorBase:
         assert TSDecorated.__qualname__ == 'Container.TSDummy'
         assert TSDecorated.__module__ == 'testsetup_dummy'
 
-    def test_call_onCls_calls(self, TSDummy):
-        TSDummy.__extend_by_transunit__ = Mock()
+    def test_call_onCls_createsDerivedCls(self, TSDummy):
         deco = CModuleDecoratorBase()
-        tu1, tu2 = Mock(), Mock()
-        deco.iter_transunits = Mock(return_value=iter([tu1, tu2]))
-        TSDecorated = deco(TSDummy)
-        assert TSDummy.__extend_by_transunit__.call_args_list \
-               == [call(tu1), call(tu2)]
+        TSDerived = deco(TSDummy)
+        assert issubclass(TSDerived, TSDummy)
+
+    def test_call_onCls_callsExtendByTransUnit(self, TSDummy):
+        with patch.object(TSDummy, '__extend_by_transunit__'):
+            deco = CModuleDecoratorBase()
+            tu1, tu2 = Mock(), Mock()
+            deco.iter_transunits = Mock(return_value=iter([tu1, tu2]))
+            deco(TSDummy)
+            assert TSDummy.__extend_by_transunit__.call_args_list \
+                   == [call(tu1), call(tu2)]
+
+    def test_call_onCls_extendsLibrSearchParams(self, TSDummy):
+        with patch.object(TSDummy, '__extend_by_lib_search_params__'):
+            deco = CModuleDecoratorBase()
+            deco.iter_transunits = MagicMock()
+            deco.get_lib_search_params = Mock(return_value=([Path('dir')],
+                                                            ['lib']))
+            deco(TSDummy)
+            TSDummy.__extend_by_lib_search_params__.assert_called_once_with(
+                [Path('dir')], ['lib'])
 
 
 class TestCModule:
@@ -136,6 +157,19 @@ class TestCModule:
         with pytest.raises(IOError):
             list(c_mod.iter_transunits(TSDummy))
 
+    def test_getLibSearchParams_retrievesAndResolvesLibsDirs(self, tmpdir, TSDummy):
+        with sim_tsdummy_tree(tmpdir, {'src':b'', 'd1':{}, 'd2':{}}) \
+                as base_dir:
+            c_mod = CModule('src', library_dirs=['d1', 'd2'])
+            [_, lib_dirs] = c_mod.get_lib_search_params(TSDummy)
+            assert lib_dirs == [base_dir / 'd1', base_dir / 'd2']
+
+    def test_iterTransunits_retrievesRequiredLibs(self, tmpdir, TSDummy):
+        with sim_tsdummy_tree(tmpdir, {'src': b''}) as base_dir:
+            c_mod = CModule('src', required_libs=['lib1', 'lib2'])
+            [req_libs, _] = c_mod.get_lib_search_params(TSDummy)
+            assert req_libs == ['lib1', 'lib2']
+
     def test_resolvePath_onRelativeFileAndRelativeModulePath_returnsAbsolutePath(self, TSDummy, tmpdir):
         module = sys.modules[TSDummy.__module__]
         with build_tree(tmpdir, {'file.py': b'', 'file.c': b''}) as dir:
@@ -151,7 +185,7 @@ class TestTestSetup(object):
         sourcefile.write_bytes(src)
         transunit = TransUnit('test_tu', sourcefile, [], macros)
         cls.__extend_by_transunit__(transunit)
-    
+
     def cls_from_ccode(self, src, filename, **macros):
         class TSDummy(TestSetup): pass
         self.extend_by_ccode(TSDummy, src, filename, **macros)
@@ -282,6 +316,27 @@ class TestTestSetup(object):
             assert ts.a.val == 11
             assert ts.b.val == 22
             assert ts.c.val == 33
+
+    def test_build_onExtendByLibsSearchParams_passesMergedLibsAndSearchDirectories(self):
+        class TSChkLibDirs(TestSetup):
+            __TOOLCHAIN__ = Mock()
+            __load__ = __unload__ = Mock()
+        TSChkLibDirs.__extend_by_lib_search_params__(['lib1'], [Path('dir1')], )
+        TSChkLibDirs.__extend_by_lib_search_params__(['lib2'], [Path('dir2')])
+        ts = TSChkLibDirs()
+        TSChkLibDirs.__TOOLCHAIN__.build.assert_called_once_with(
+            ANY, ANY, ANY, ['lib1', 'lib2'], [Path('dir1'), Path('dir2')])
+
+    def test_build_onExtendByLibsSearchParams_doesNotModifyParentCls(self):
+        class TSChkLibDirs(TestSetup):
+            __TOOLCHAIN__ = Mock()
+            __load__ = __unload__ = Mock()
+        class TSChkLibDirsChild(TSChkLibDirs):
+            pass
+        TSChkLibDirsChild.__extend_by_lib_search_params__(['l'], [Path('d')])
+        TSChkLibDirs()
+        TSChkLibDirs.__TOOLCHAIN__.build.assert_called_once_with(
+            ANY, ANY, ANY, [], [])
 
     @patch('headlock.testsetup.TestSetup.__shutdown__')
     def test_unload_onStarted_callsShutdown(self, __shutdown__):
