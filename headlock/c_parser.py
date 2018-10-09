@@ -1,10 +1,12 @@
+import operator
 import re
 import os
 from pathlib import Path
 import warnings
+from typing import Dict, List, Any, ByteString, Union
 
 from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
-    TranslationUnit, Config, TranslationUnitLoadError
+    TranslationUnit, Config, TranslationUnitLoadError, Cursor, Type
 from .c_data_model import BuildInDefs, CObjType, CFunc, CStruct, CEnum, CVector
 
 
@@ -189,16 +191,22 @@ class CParser:
         'punpckhqdq128': '__m128d', 'punpcklbw128': '__m128d',
         'punpcklwd128': '__m128d', 'punpckldq128': '__m128d',
         'punpcklqdq128': '__m128d', 'pandn128': '__m128d',
-        'pavgb128': '__m128d', 'pavgw128': '__m128d'}
+        'pavgb128': '__m128d', 'pavgw128': '__m128d',
+        'movntps': '__m128', 'movntdq': '__m128', 'movntpd': '__m128'}
     GCC_ZEROTYPE_MAP = {
         '__m128': '_mm_setzero_ps()', '__v4sf': '_mm_setzero_ps()',
         '__m128d': '_mm_setzero_pd()', 'int': '0'}
 
-    def __init__(self, predef_macros=None, include_dirs=None,
-                 sys_include_dirs=None, target_compiler=None):
+    def __init__(self, predef_macros:Dict[str, Any]=None,
+                 include_dirs:List[Path]=None,
+                 sys_include_dirs:List[Path]=None,
+                 target_compiler:str=None):
         super().__init__()
-        self.include_dirs = include_dirs or []
-        self.sys_include_dirs = sys_include_dirs or []
+        self.__resolve_cache:Dict[str, Path] = {}
+        self.__syshdr_cache:Dict[str, bool] = {}
+        self.__sys_typedefs:Dict[str, Type] = {}
+        self.include_dirs = list(map(self.resolve, include_dirs or []))
+        self.sys_include_dirs = list(map(self.resolve, sys_include_dirs or []))
         self.predef_macros = predef_macros.copy() if predef_macros else {}
         annotate = '__attribute__((annotate("{}")))'.format
         self.predef_macros.update(
@@ -219,7 +227,7 @@ class CParser:
         self.source_files = set()
         self.target_compiler = target_compiler
 
-    def convert_struct_from_cursor(self, struct_crs):
+    def convert_struct_from_cursor(self, struct_crs:Type):
         try:
             struct_type = self.structs[struct_crs.displayname]
         except KeyError:
@@ -233,16 +241,15 @@ class CParser:
         members = []
         for member_cursor in struct_crs.get_children():
             if member_cursor.kind == CursorKind.FIELD_DECL:
-                member_type = self.convert_type_from_cursor(
-                    member_cursor.type)
+                member_type = self.convert_type_from_cursor(member_cursor.type)
                 members.append( (member_cursor.displayname, member_type) )
             else:
-                self.read_datatype_decl_from_cursor(member_cursor)
+                self.convert_datatype_decl_from_cursor(member_cursor)
         if members:
             struct_type.delayed_def(*members)
         return struct_type
 
-    def convert_enum_from_cursor(self, enum_crs):
+    def convert_enum_from_cursor(self, enum_crs:Type) -> CEnum:
         try:
             enum_type = self.structs[enum_crs.displayname]
         except KeyError:
@@ -251,16 +258,17 @@ class CParser:
                 self.structs[enum_crs.displayname] = enum_type
         return enum_type
 
-    def read_datatype_decl_from_cursor(self, cursor):
+    def convert_datatype_decl_from_cursor(self, cursor:Type) \
+            -> Union[CStruct, CEnum]:
         if cursor.displayname:
             if cursor.kind == CursorKind.STRUCT_DECL:
-                self.convert_struct_from_cursor(cursor)
+                return self.convert_struct_from_cursor(cursor)
             elif cursor.kind == CursorKind.ENUM_DECL:
-                self.convert_enum_from_cursor(cursor)
+                return self.convert_enum_from_cursor(cursor)
             elif cursor.kind == CursorKind.UNION_DECL:
-                self.convert_struct_from_cursor(cursor)
+                return self.convert_struct_from_cursor(cursor)
 
-    def convert_type_from_cursor(self, type_crs):
+    def convert_type_from_cursor(self, type_crs:Type):
         def is_function_proto(cursor):
             # due to a bug in libclang (v4.0) TypeKind.FUNCTIONPROTO does
             # not work on function pointers. This this helper does
@@ -292,9 +300,14 @@ class CParser:
             res = CFunc.typedef(*arg_cobjtypes, returns=ret_objtype)
         elif type_crs.kind == TypeKind.ELABORATED:
             decl_cursor = type_crs.get_declaration()
-            if decl_cursor.displayname:
-                struct_def = self.structs[decl_cursor.displayname]
-            else:
+            struct_name = decl_cursor.displayname
+            try:
+                struct_def = self.structs[struct_name]
+            except KeyError:
+                # a struct could not be found in self.structs for two reasons:
+                # - its an anonymous struct (without struct_name == '')
+                # - it was defined in system header file and thus skipped for
+                #   performance reasons
                 struct_def = self.convert_type_from_cursor(decl_cursor.type)
             res = struct_def
         else:
@@ -303,7 +316,13 @@ class CParser:
                 typedef_name = typedef_name.replace('const_', '')
             if type_crs.is_volatile_qualified():
                 typedef_name = typedef_name.replace('volatile_', '')
-            res = self.typedefs[typedef_name]
+            try:
+                res = self.typedefs[typedef_name]
+            except KeyError:
+                # type was defined in system header files and not yet parsed
+                typedef_typ = type_crs.get_declaration().underlying_typedef_type
+                res = self.convert_type_from_cursor(typedef_typ)
+                self.typedefs[typedef_name] = res
         if type_crs.is_const_qualified():
             res = res.with_attr('const')
         if type_crs.is_volatile_qualified():
@@ -317,8 +336,12 @@ class CParser:
                        for c in cursor.get_children())
 
         for sub_cursor in cursor.get_children():
-            if sub_cursor.kind == CursorKind.MACRO_DEFINITION:
-                start = sub_cursor.extent.start
+            start = sub_cursor.extent.start
+            if start.file and self.is_sys_hdr(start.file.name):
+                if sub_cursor.kind == CursorKind.TYPEDEF_DECL:
+                    self.__sys_typedefs[sub_cursor.displayname] = \
+                                              sub_cursor.underlying_typedef_type
+            elif sub_cursor.kind == CursorKind.MACRO_DEFINITION:
                 if start.file is not None:
                     self.macro_locs[sub_cursor.displayname] = (
                         start.file.name,
@@ -329,9 +352,7 @@ class CParser:
                 # ignore inline functions and dllimport-functions
                 if not has_attr(sub_cursor, CursorKind.ANNOTATE_ATTR,
                                 self.INLINE_ATTR_TEXT) \
-                        and not has_attr(sub_cursor, CursorKind.DLLIMPORT_ATTR)\
-                        and not self.is_sys_hdr(
-                            Path(sub_cursor.extent.start.file.name)):
+                        and not has_attr(sub_cursor, CursorKind.DLLIMPORT_ATTR):
                     cobj_type = self.convert_type_from_cursor(sub_cursor.type)
                     if has_attr(sub_cursor, CursorKind.ANNOTATE_ATTR,
                                 self.CDECL_ATTR_TEXT):
@@ -347,17 +368,17 @@ class CParser:
                 cobj_type = self.convert_type_from_cursor(typedef_cursor)
                 self.typedefs[sub_cursor.displayname] = cobj_type
             elif sub_cursor.kind == CursorKind.VAR_DECL \
-               and sub_cursor.storage_class != StorageClass.STATIC:
-                if not self.is_sys_hdr(Path(sub_cursor.extent.start.file.name)):
-                    cobj_type = self.convert_type_from_cursor(sub_cursor.type)
-                    self.vars[sub_cursor.displayname] = cobj_type
-                    if sub_cursor.storage_class == StorageClass.NONE:
-                        self.implementations.add(sub_cursor.displayname)
+                    and sub_cursor.storage_class != StorageClass.STATIC:
+                cobj_type = self.convert_type_from_cursor(sub_cursor.type)
+                self.vars[sub_cursor.displayname] = cobj_type
+                if sub_cursor.storage_class == StorageClass.NONE:
+                    self.implementations.add(sub_cursor.displayname)
             else:
-                self.read_datatype_decl_from_cursor(sub_cursor)
+                self.convert_datatype_decl_from_cursor(sub_cursor)
 
 
-    def read(self, file_name, patches=None):
+    def read(self, file_name:os.PathLike,
+             patches:Dict[os.PathLike, bytes]=None):
         patches = patches or {}
         def sys_inc_dir_args(sys_include_dirs):
             for sys_inc_dir in sys_include_dirs:
@@ -383,7 +404,7 @@ class CParser:
                 os.fspath(file_name),
                 unsaved_files=[(os.fspath(nm), c.decode('ascii'))
                                for nm, c in patches.items()],
-                args=[f'-I{inc_dir}' for inc_dir in self.include_dirs]
+                args=[f'-I{os.fspath(incdir)}' for incdir in self.include_dirs]
                      + [f'-D{mname}={mval or ""}'
                         for mname, mval in predefs.items()]
                      + list(sys_inc_dir_args(self.sys_include_dirs))
@@ -392,12 +413,13 @@ class CParser:
                 options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
         except TranslationUnitLoadError as e:
             raise FileNotFoundError(
-                f'File {file_name} cannot be opened/is invalid') from e
-        self.source_files.add(Path(file_name).resolve())
+                f'File {os.fspath(file_name)} cannot be opened/is invalid') \
+                from e
+        self.source_files.add(self.resolve(os.fspath(file_name)))
         for incl_file_obj in tu.get_includes():
-            incl_file_path = Path(incl_file_obj.include.name).resolve()
+            incl_file_path = incl_file_obj.include.name
             if not self.is_sys_hdr(incl_file_path):
-                self.source_files.add(incl_file_path)
+                self.source_files.add(self.resolve(incl_file_path))
         errors = [diag for diag in tu.diagnostics
                    if diag.severity >= diag.Error]
         if errors:
@@ -405,21 +427,40 @@ class CParser:
                 (err.spelling, err.location.file.name, err.location.line)
                 for err in errors if err.location.file is not None])
         self.read_from_cursor(tu.cursor)
-        files = {Path(name).resolve(): Path(name).read_bytes()
-                 for name, start, end in self.macro_locs.values()}
+        filenames = set(map(operator.itemgetter(0), self.macro_locs.values()))
+        files = {self.resolve(fn): Path(fn).read_bytes() for fn in filenames}
         files.update({Path(nm).resolve(): c for nm, c in patches.items()})
-        for macro_name, (fname, start, end) in self.macro_locs.items():
-            fcontent = files[Path(fname).resolve()]
+        for macro_name, (fn, start, end) in self.macro_locs.items():
+            fcontent = files[self.resolve(fn)]
             macro_text = fcontent[start:end].replace(b'\n\f', b'\n')
             macro_def = MacroDef.create_from_srccode(macro_text.decode('ascii'))
             self.macros[macro_name] = macro_def
 
-    def is_sys_hdr(self, src_filename:Path):
+    def is_sys_hdr(self, src_filename:str):
         def is_parent_of_src_filename(root_dir):
             try:
-                src_filename.relative_to(root_dir)
+                self.resolve(src_filename).relative_to(root_dir)
             except ValueError:
                 return False
             else:
                 return True
-        return any(map(is_parent_of_src_filename, self.sys_include_dirs))
+        try:
+            is_sys_hdr = self.__syshdr_cache[src_filename]
+        except KeyError:
+            is_sys_hdr = any(map(is_parent_of_src_filename,
+                                 self.sys_include_dirs))
+            self.__syshdr_cache[src_filename] = is_sys_hdr
+        return is_sys_hdr
+
+    def resolve(self, path:str) -> Path:
+        """
+        Converts a string to a resolved path.
+        This method is only for optimization purposes, as resolving needs
+        quite a bit time and is done very often.
+        """
+        try:
+            res_path_obj = self.__resolve_cache[path]
+        except KeyError:
+            res_path_obj = Path(path).resolve()
+            self.__resolve_cache[path] = res_path_obj
+        return res_path_obj

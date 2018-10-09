@@ -2,6 +2,7 @@ from unittest.mock import Mock, MagicMock, patch
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 import os
 import warnings
+from pathlib import Path
 import pytest
 from .helpers import build_tree
 from headlock.libclang.cindex import TranslationUnit
@@ -571,7 +572,7 @@ class TestCParser:
     @classmethod
     def parse(cls, content, patches=None, sys_include_dirs=None,
               target_compiler=None, **predef_macros):
-        parser = CParser(predef_macros, sys_include_dirs, [], target_compiler)
+        parser = CParser(predef_macros, [], sys_include_dirs, target_compiler)
         fileobj = NamedTemporaryFile(suffix='.c', delete=False, mode='w+t')
         try:
             fileobj.write(content)
@@ -638,12 +639,29 @@ class TestCParser:
         assert 'var' not in parser.vars
         assert parser.source_files == {basedir / 'test.c'}
 
+    def test_read_onSystemHeaderFile_ignoresAllEntriesExceptRequiredTypes(self, tmpdir):
+        basedir = build_tree(tmpdir, {
+            'test.c': b'#include <test.h>\n'
+                      b'void func(req_type * param);\n',
+            'sys-incl': {
+                'test.h': b'typedef struct req_struct { } req_type;\n'
+                          b'typedef struct not_req_struct { } not_req_type;\n'
+                          b'void sys_func(not_req_type * param);\n'}})
+        parser = CParser(sys_include_dirs=[basedir / 'sys-incl'])
+        parser.read(basedir / 'test.c')
+        assert 'req_type' in parser.typedefs, \
+            'a type required by module under test was not parsed'
+        assert 'not_req_type' not in parser.typedefs, \
+            'a not required by module under test was parsed'
+        assert 'sys_func' not in parser.funcs, \
+            'a system function was parsed'
+
     def test_read_onPredefinedMacroDict_doesNotModifyPredefinedMacroDict(self, tmpdir):
         c_file = tmpdir.join('predef_macro.c')
         c_file.write_binary(b'#define B')
         predef_macros = dict(A=1)
         parser = CParser(predef_macros)
-        parser.read(str(c_file))
+        parser.read(Path(c_file))
         assert predef_macros == dict(A=1)
 
     def test_read_onAdditionalDefines_passesDefinesToParser(self):
