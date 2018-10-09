@@ -1,6 +1,7 @@
 import re
 import os
 from pathlib import Path
+import warnings
 
 from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
     TranslationUnit, Config, TranslationUnitLoadError
@@ -135,7 +136,8 @@ class MacroDef:
             code = None
         else:
             try:
-                code = compile(src_code, '<string>', 'eval')
+                with warnings.catch_warnings(record=True):
+                    code = compile(src_code, '<string>', 'eval')
             except SyntaxError:
                 code = None
                 valid = False

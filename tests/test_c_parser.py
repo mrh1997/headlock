@@ -1,12 +1,13 @@
 from unittest.mock import Mock, MagicMock, patch
 from tempfile import NamedTemporaryFile, TemporaryDirectory
+import os
+import warnings
 import pytest
 from .helpers import build_tree
 from headlock.libclang.cindex import TranslationUnit
 from headlock.c_parser import CParser, MacroDef, ParseError
 from headlock.c_data_model import BuildInDefs as bd, CFunc, CStruct, CEnum, \
     CUnion, CVector
-import os
 
 
 class TestParserError:
@@ -122,6 +123,19 @@ class TestMacroDef:
 
     def test_createFromSrcCode_onReferenceToParaenthizedMacroParam_doNotReplaceTypeCast(self):
         self.assert_create_as('MACRO(a) 1 + (a)', '1 + (a)', exp_params=('a',))
+
+    def test_createFromSrcCode_onEmptyStringMacros_returnStringEmptyString(self):
+        self.assert_create_as(r'MACRO  ""', exp_expr='""')
+
+    @pytest.mark.xfail
+    def test_createFromSrcCode_onString_returnsUnmodifiedString(self):
+        self.assert_create_as(r'MACRO  "self.test = 99/3"',
+                              exp_expr='"self.test = 99/3"')
+
+    def test_createFromSrcCode_onStringMacroWithEscapeSeq_mustNotGenerateAnyKindOfWarning(self):
+        with warnings.catch_warnings(record=True) as warning_list:
+            MacroDef.create_from_srccode(r'MACRO  "\n"')
+        assert not warning_list
 
     def test_get_onResolveStructAttr_ok(self):
         class Container:
