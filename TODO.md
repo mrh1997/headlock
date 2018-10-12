@@ -30,6 +30,30 @@ Small (can be done by occassion)
 * Replace _global_refs_ dictionary by option during creation of object.
   When settings this option the element is not freed until destruction
   of testsetup
+* whitelisting for objects from system headers which shall not be skipped
+  (to allow them to be used in a playground). the whitelist has to be
+  specified through testsetup
+* "const int * array" cannot be used in function parameter
+   ("WriteProtectedError" is raised)
+* not parsable macros shall be overwritable: "class TS(TestSetup): MACRO = 9"
+* Arrays (incomplete or not cannot be passed to funcs): "void func(int p1[], p2[10]);"
+* Deny creation of arrays of 'CVoid': "ts.void.array(10)" -> raisey error
+* move CompileError display from pytest-plugin to headlock, so that
+  creating a testsetup in a playground gives reasonable error messages
+* move VarPtr and MemPtr from pytest-plugin to headlock as they are
+  not pytest specific (but specific to unittest.mock or similar)
+* raise exception when writing a proxy without ".val". i.e.
+  "x.ref = 2"
+* raise error if detecting "__declspec(dllexport)" (does not work,
+  but currently gives no obvious error message)
+* add cobj.copy() to allow quick and easy duplicating a C object.
+  If I want to duplicate a pointer to a struct currently
+  "x = ts.struct.y_t(y)" is necessary.
+* currently multiple parse runs (when working with multiple c files)
+  are done with different CParser objects.
+  This causes multiple definitions of the same type but with different
+  IDs. In future the CParser should work with an external database, so
+  that already parsed types are reused.
 
 
 Medium
@@ -56,6 +80,9 @@ Medium
 * CParser cannot read macros with &&, ||, ! operators
   (has to be converted to and/or/not)
 * wird "with ts:" verschachtelt aufgerufen, hängt sich headlock auf
+* generator for .pyi files, so that type-completion works on testsetups
+  (to make it work on testsetups you have to enter "test_xyt(ts:ts):"
+   then)
 
 
 Major/Investigation necessary
