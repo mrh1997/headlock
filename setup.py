@@ -17,7 +17,8 @@ setup(
     author='Robert Hölzl',
     author_email='robert.hoelzl@posteo.de',
     url='https://headlock.readthedocs.io/en/latest/index.html',
-    packages=['headlock', 'headlock.libclang', 'headlock.toolchains'],
+    packages=['headlock', 'headlock.libclang', 'headlock.toolchains',
+              'headlock.integrations.pytest'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Operating System :: Microsoft :: Windows',
@@ -26,5 +27,13 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: C',
         'Topic :: Software Development :: Testing',
-    ]
+    ],
+    entry_points = {
+        'pytest11': [
+            'headlock-debug-support = '
+                'headlock.integrations.pytest.plugin_headlock_debug',
+            'headlock-report-error = '
+                'headlock.integrations.pytest.plugin_headlock_report',
+        ]
+    },
 )
