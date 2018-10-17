@@ -85,6 +85,8 @@ Medium
 * generator for .pyi files, so that type-completion works on testsetups
   (to make it work on testsetups you have to enter "test_xyt(ts:ts):"
    then)
+* raise "WriteProtectedError" if trying to write to "const" object
+  (note that this must NOT be the case during initialization)
 
 
 Major/Investigation necessary

@@ -437,8 +437,6 @@ class CInt(CObj):
 
     @val.setter
     def val(self, pyobj):
-        if self.cobj_type.has_attr('const') and self._initialized:
-            raise WriteProtectError()
         if pyobj is None:
             pyobj = 0
         elif isinstance(pyobj, (collections.abc.ByteString, str)):

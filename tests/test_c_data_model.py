@@ -409,6 +409,7 @@ class TestCInt:
         cint_obj.val = cint_type(2)
         assert cint_obj.val == 2
 
+    @pytest.mark.xfail
     def test_setVal_onConstCObj_raisesWriteProtectError(self, cint_type):
         const_cint_obj = cint_type.with_attr('const')(3)
         with pytest.raises(cdm.WriteProtectError):
@@ -736,7 +737,7 @@ class TestCPointer:
             cptr_obj.val = '\U00012345\u1234'
         assert ref_data == [0x12345, 0x1234, 0, 0x99]
 
-    def test_setVal_onConstCObj_raisesWriteProtectError(self, cptr_type):
+    def test_setVal_onConstPtr_raisesWriteProtectError(self, cptr_type):
         const_ptr_obj = cptr_type.with_attr('const')(3)
         with pytest.raises(cdm.WriteProtectError):
             const_ptr_obj.val = 4
@@ -896,6 +897,10 @@ class TestCArray:
         array = cdm.CArray(carray_type, '\u1122')
         assert array.ctypes_obj[0] == 0x1122
         assert array.ctypes_obj[1] == 0
+
+    def test_init_onConstArray_ok(self, cint_type):
+        carray_obj = cint_type.with_attr('const').array(1)
+        _ = carray_obj()
 
     def test_getVal_returnsListOfPyObjs(self, carray_type):
         carray_obj = cdm.CArray(carray_type, [0x11, 0x22, 0x33, 0x44])
