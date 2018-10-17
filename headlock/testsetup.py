@@ -285,14 +285,17 @@ class TestSetup(BuildInDefs):
             cls.__globals.update(parser.vars)
             cls.__implementations |= parser.implementations
 
+            for name, typedef in parser.typedefs.items():
+                if isinstance(typedef, CStructType) \
+                    and typedef.is_anonymous_struct():
+                    typedef.struct_name = '__anonymousfromtypedef__' + name
+                setattr(cls, name, typedef)
             for name, typedef in parser.structs.items():
                 if isinstance(typedef, CStructType):
-                    setattr(cls.struct, name, typedef)
+                    setattr(cls.struct, typedef.struct_name, typedef)
                 elif isinstance(typedef, CEnumType):
                     setattr(cls.enum, name, typedef)
 
-            for name, typedef in parser.typedefs.items():
-                setattr(cls, name, typedef)
             for name, macro_def in parser.macros.items():
                 setattr(cls, name, macro_def)
 

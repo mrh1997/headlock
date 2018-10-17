@@ -529,11 +529,19 @@ class TestTestSetup(object):
         with TSMock() as ts:
             assert ts.var.cobj_type == ts.struct.strct
 
-    def test_structWrapper_onAnonymousStruct_ok(self):
+    def test_structWrapper_onVarFromAnonymousStruct_ok(self):
         TSMock = self.cls_from_ccode(b'struct { int a; } var;',
-                                     'anonymous_structs.c')
+                                     'anonymous_structs_var.c')
         with TSMock() as ts:
             assert [ts.var.cobj_type] == list(ts.struct.__dict__.values())
+
+    def test_structWrapper_onTypedefFromAnonymousStruct_renamesStructToMakeItUsableAsParameter(self):
+        TSMock = self.cls_from_ccode(b'typedef struct { int a; } t;\n'
+                                     b'void func(t * a);',
+                                     'anonymous_structs_typedef.c')
+        with TSMock() as ts:
+            anon_cstruct_type = getattr(ts.struct, '__anonymousfromtypedef__t')
+            assert not anon_cstruct_type.is_anonymous_struct()
 
     def test_enumWrapper_storesEnumDefInEnumCls(self):
         TSMock = self.cls_from_ccode(b'enum enum_t { a };', 'enum.c')
