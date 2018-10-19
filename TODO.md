@@ -56,6 +56,16 @@ Small (can be done by occassion)
   This causes multiple definitions of the same type but with different
   IDs. In future the CParser should work with an external database, so
   that already parsed types are reused.
+* introduce "permanent reference" as replacement for TestSetup._global_refs_.
+  They are done by simply running "obj @ ts". Object may be a python object,
+  in which case it is converted to a CObj before adding a permanent reference.
+  I.e. ts(b"test") would create a python string. This construct should
+  avoid circular references, i.e.: "ts.func_ptr(ts.func) @ ts"
+  (via external dictionary?!?)!
+  Furthermore a new context could be introdced for "temporary references".
+  All references created while the context are released after the context.
+  Maybe use functionname instead of __rmatmul__ for clarity?!?
+
 
 
 Medium
@@ -73,7 +83,11 @@ Medium
   * _depends_on_ should be checked for correctness again, as errors can be
     very tedious (i.e. CPointer does not reset _depends_on_ when setting to a
     different value currently)
-  * INTRODUCE OWNER-SHIP CONCEPT!!! (how???)
+  * Make ownership clear:
+     - .adr creates owner of myself
+     - nested structures created from python objects shall ensure ownership.
+       THIS IS NOT THE CASE YET. ie.: ts.strct(b'string') does not work yet,
+       as the pointer to b'string' is immediately freed after creation.
 * replace logging system by more versatile one (buildin logging framework?!?)
     * possibility to parametrize logging (of calls c/python) by specifying
       funcs/args to be logged/way what exactly shall be logged

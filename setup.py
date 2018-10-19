@@ -18,7 +18,7 @@ setup(
     author_email='robert.hoelzl@posteo.de',
     url='https://headlock.readthedocs.io/en/latest/index.html',
     packages=['headlock', 'headlock.libclang', 'headlock.toolchains',
-              'headlock.integrations.pytest'],
+              'headlock.c_data_model', 'headlock.integrations.pytest'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Operating System :: Microsoft :: Windows',
