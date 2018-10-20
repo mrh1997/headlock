@@ -181,7 +181,7 @@ class TestCModule:
 class TestTestSetup(object):
 
     def extend_by_ccode(self, cls, src, filename, **macros):
-        sourcefile = (Path(__file__).parent / 'c_files' / filename).absolute()
+        sourcefile = (Path(__file__).parent / 'c_files' / filename).resolve()
         sourcefile.write_bytes(src)
         transunit = TransUnit('test_tu', sourcefile, [], macros)
         cls.__extend_by_transunit__(transunit)
