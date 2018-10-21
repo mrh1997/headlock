@@ -42,6 +42,15 @@ from the `github repository <https://github.com/mrh1997/headlock>`_ via
 
    pip install git+https://github.com/mrh1997/headlock.git
 
+.. attention::
+
+   AVIRA and maybe also other virus scanners seems to delay loading DLLs
+   compiled a moment ago by multiple seconds
+   `(see this link) <https://hero.handmade.network/forums/code-discussion/t/2948-loadlibrary_very_slow>`_.
+   As this feature is essential for headlock, you must add you project directory
+   to the list of directories, that shall not be scanned by the realtime
+   scanner. Otherwise the first instantiation of a testsetup will require
+   10-30 seconds per run.
 
 Usage
 =====

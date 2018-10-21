@@ -43,6 +43,11 @@ C/Python bridges like ctypes, cffi, swig, cython, ...:
    the following tests to return different results than when being
    run separately.
 
+ * **[PLANNED]** Test the same piece of C code compiled for 32bit and 64bit
+   from within a single testrun. This means it doesn't matter what architecture
+   your python testcode is running on. As the C code is running in a separate
+   Process it can control both variants, 32bit and 64bit.
+
  * Especially make it work with embedded systems, so that
 
     * **[PLANNED]** C code can be executed on destination hardware.
