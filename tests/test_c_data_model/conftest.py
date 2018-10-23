@@ -12,6 +12,10 @@ def cint16_type():
     return cdm.CIntType('i16', 16, True, ct.c_int16)
 
 @pytest.fixture
+def cuint64_type():
+    return cdm.CIntType('u64', 64, False, ct.c_uint64)
+
+@pytest.fixture
 def cfunc_type():
     return cdm.CFuncType()
 

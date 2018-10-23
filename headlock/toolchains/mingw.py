@@ -11,38 +11,41 @@ from ..testsetup import ToolChainDriver, BuildError
 BUILD_CACHE = set()
 
 
-class MinGW32ToolChain(ToolChainDriver):
+class MinGWToolChain(ToolChainDriver):
 
-    CLANG_TARGET = 'i386-pc-mingw32'
     ADDITIONAL_COMPILE_OPTIONS = []
     ADDITIONAL_LINK_OPTIONS = []
 
-    def __init__(self, architecture=None, version=None, thread_model=None,
+    ARCHITECTURE:str = None
+
+    def __init__(self, version=None, thread_model=None,
                  exception_model=None, rev=None, mingw_install_dir=None):
         super().__init__()
         if mingw_install_dir is None:
             self.mingw_install_dir = self._autodetect_mingw_dir(
-                architecture, version, thread_model, exception_model, rev)
+                version, thread_model, exception_model, rev)
         else:
             self.mingw_install_dir = mingw_install_dir
 
-    def _autodetect_mingw_dir(
-            self, architecture, version, thread_model, exception_model, rev):
+    def _autodetect_mingw_dir(self,version, thread_model, exception_model, rev):
         def iter_uninstall_progkeys():
-            uninst_keyname = r"SOFTWARE\WOW6432Node\Microsoft\Windows" \
-                                r"\CurrentVersion\Uninstall"
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, uninst_keyname) \
-                    as uninst_key:
-                for ndx in itertools.count(0):
-                    try:
-                        subkey_name = winreg.EnumKey(uninst_key, ndx)
-                    except OSError:
-                        break
-                    if not subkey_name.startswith('{'):
-                        with winreg.OpenKey(uninst_key, subkey_name) as subkey:
-                            yield subkey_name, subkey
+            for uninstall_regkey in [r"SOFTWARE\WOW6432Node\Microsoft\Windows"
+                                        r"\CurrentVersion\Uninstall",
+                                     r"SOFTWARE\Microsoft\Windows"
+                                        r"\CurrentVersion\Uninstall"]:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                    uninstall_regkey) as uninst_key:
+                    for ndx in itertools.count(0):
+                        try:
+                            subkey_name = winreg.EnumKey(uninst_key, ndx)
+                        except OSError:
+                            break
+                        if not subkey_name.startswith('{'):
+                            with winreg.OpenKey(uninst_key,
+                                                subkey_name) as subkey:
+                                yield subkey_name, subkey
 
-        mingw_filter = f"{architecture or '*'}-{version or '*'}" \
+        mingw_filter = f"{self.ARCHITECTURE}-{version or '*'}" \
                        f"-{thread_model or '*'}-{exception_model or '*'}" \
                        f"-*-{rev or '*'}"
         mingw_install_dirs = {}
@@ -67,16 +70,20 @@ class MinGW32ToolChain(ToolChainDriver):
                 f'Requested MinGW Version ({mingw_filter}) was not found '
                 f'on this system')
         _, mingw_install_dir = max(mingw_install_dirs.items())
-        return mingw_install_dir / 'mingw32'
+
+        arch, plat, compiler = self.CLANG_TARGET.split('-')
+        return mingw_install_dir / compiler
 
     def sys_incl_dirs(self):
         ext_incl_dir_base = self.mingw_install_dir \
-                            / 'lib/gcc/i686-w64-mingw32'
-        return [self.mingw_install_dir / 'i686-w64-mingw32/include'] \
+                            / f'lib/gcc/{self.ARCHITECTURE}-w64-mingw32'
+        return [self.mingw_install_dir
+                / f'{self.ARCHITECTURE}-w64-mingw32/include'] \
                + list(ext_incl_dir_base.glob('*.*.*/include'))[:1]
 
     def _run_gcc(self, call_params, dest_file):
         try:
+            print(repr([str(self.mingw_install_dir / 'bin' / 'gcc')] + call_params))
             completed_proc = subprocess.run(
                 [str(self.mingw_install_dir / 'bin' / 'gcc')] + call_params,
                 encoding='ascii',
@@ -113,3 +120,13 @@ class MinGW32ToolChain(ToolChainDriver):
                       + self.ADDITIONAL_LINK_OPTIONS,
                       exe_file_path)
         BUILD_CACHE.add((tuple(transunits), build_dir))
+
+
+class MinGW32ToolChain(MinGWToolChain):
+    CLANG_TARGET = 'i386-pc-mingw32'
+    ARCHITECTURE = 'i686'
+
+
+class MinGW64ToolChain(MinGWToolChain):
+    CLANG_TARGET = 'x86_64-pc-mingw64'
+    ARCHITECTURE = 'x86_64'

@@ -179,7 +179,9 @@ class CFunc(CObj):
 
     @property
     def adr(self):
-        ctypes_ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_int))
+        ptr_size_int = ct.c_uint64 if ct.sizeof(ct.c_void_p)==8 else ct.c_uint32
+        ctypes_ptr = ct.cast(ct.pointer(self.ctypes_obj),
+                             ct.POINTER(ptr_size_int))
         return self.cobj_type.ptr(ctypes_ptr.contents.value, _depends_on_=self)
 
 CFuncType.COBJ_CLASS = CFunc

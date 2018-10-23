@@ -1,6 +1,7 @@
 import operator
 import re
 import os
+import platform
 from pathlib import Path
 import warnings
 from typing import Dict, List, Any, ByteString, Union
@@ -11,7 +12,11 @@ from .c_data_model import BuildInDefs, CObjType, CFuncType, CStructType, \
     CUnionType, CEnumType, CVectorType, CStruct, CUnion, CEnum
 
 
-Config.set_library_path(os.environ.get('LLVM_DIR', r'C:\Program Files (x86)\LLVM\bin'))
+if platform.architecture()[0] == '32bit':
+    default_llvm_dir = r'C:\Program Files (x86)\LLVM\bin'
+else:
+    default_llvm_dir = r'C:\Program Files\LLVM\bin'
+Config.set_library_path(os.environ.get('LLVM_DIR', default_llvm_dir))
 Config.set_required_version(7, 0, 0)
 
 

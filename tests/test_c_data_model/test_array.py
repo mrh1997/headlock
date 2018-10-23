@@ -203,10 +203,10 @@ class TestCArray:
         assert carray_obj[:3] == [0x11, 0x22, 0x33]
 
     def test_add_returnsPointer(self):
-        carray_obj = self.create_int_carray_obj(32, [0x11, 0x22, 0x33, 0x44])
-        added_obj = carray_obj + 3
-        assert isinstance(added_obj, cdm.CPointer)
-        assert added_obj.val == self.adr_of(carray_obj[3])
+        carray_obj = self.create_int_carray_obj(8, [0x11] * 32)
+        added_cobj = carray_obj + 3
+        assert isinstance(added_cobj, cdm.CPointer)
+        assert added_cobj.val == self.adr_of(carray_obj[3])
 
     def test_repr_returnsClassNameAndContent(self, cint_type):
         carray_type = cdm.CArrayType(cint_type, 3)

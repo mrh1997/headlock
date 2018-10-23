@@ -6,6 +6,7 @@ import weakref
 import abc
 import hashlib
 import copy
+import platform
 from typing import List, Iterator, Dict, NamedTuple, Any, Tuple, Union
 
 from pathlib import Path
@@ -470,6 +471,9 @@ class TestSetup(BuildInDefs):
 
 # This is a preliminary workaround until there is a clean solution on
 # how to configure toolchains.
-from .toolchains.mingw32 import MinGW32ToolChain
-TestSetup.__TOOLCHAIN__ = MinGW32ToolChain(architecture='i686',
-                                           exception_model='dwarf')
+if platform.architecture()[0] == '32bit':
+    from .toolchains.mingw import MinGW32ToolChain
+    TestSetup.__TOOLCHAIN__ = MinGW32ToolChain()
+else:
+    from .toolchains.mingw import MinGW64ToolChain
+    TestSetup.__TOOLCHAIN__ = MinGW64ToolChain()

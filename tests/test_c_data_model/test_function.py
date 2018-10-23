@@ -229,8 +229,9 @@ class TestCFunc:
         cfuncptr_type = CFuncPointerType.return_value
         cfuncptr_obj = cfunc_obj.adr
         assert cfuncptr_obj == cfuncptr_type.return_value
+        ptr_size_int = ct.c_uint64 if ct.sizeof(ct.c_void_p)==8 else ct.c_uint32
         ctypes_ptr = ct.cast(ct.pointer(cfunc_obj.ctypes_obj),
-                             ct.POINTER(ct.c_int))
+                             ct.POINTER(ptr_size_int))
         cfuncptr_type.assert_called_with(ctypes_ptr.contents.value,
                                          _depends_on_=cfunc_obj)
 
@@ -239,7 +240,8 @@ class TestCFunc:
         cfuncptr_type = CFuncPointerType.return_value
         cfuncptr_obj = abs_cfunc_obj.adr
         assert cfuncptr_obj == cfuncptr_type.return_value
+        ptr_size_int = ct.c_uint64 if ct.sizeof(ct.c_void_p)==8 else ct.c_uint32
         ctypes_ptr = ct.cast(ct.pointer(abs_cfunc_obj.ctypes_obj),
-                             ct.POINTER(ct.c_int))
+                             ct.POINTER(ptr_size_int))
         cfuncptr_type.assert_called_with(ctypes_ptr.contents.value,
                                          _depends_on_=abs_cfunc_obj)

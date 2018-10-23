@@ -78,12 +78,11 @@ class TestCPointer:
         cptr_obj = cptr_type(999)
         assert ct.addressof(cptr_obj.ctypes_obj.contents) == 999
 
-    def test_init_fromCInt_returnsPtrToSpecifiedAdrVal(self, cptr_type, cint_type):
-        ctypes_int = ct.c_int32()
-        cint_obj = cint_type(ct.addressof(ctypes_int))
+    def test_init_fromCInt_returnsPtrToSpecifiedAdrVal(self, cptr_type, cuint64_type):
+        ctypes_int = ct.c_int8()
+        cint_obj = cuint64_type(ct.addressof(ctypes_int))
         cptr_obj = cdm.CPointer(cptr_type, cint_obj)
-        assert ct.addressof(cptr_obj.ctypes_obj.contents) \
-               == ct.addressof(ctypes_int)
+        assert ct.addressof(cptr_obj.ctypes_obj.contents) == cint_obj.val
 
     def test_init_fromCPointer_returnsCastedCPointer(self, cint_type, cptr_type):
         cint_obj = cint_type()
@@ -208,21 +207,21 @@ class TestCPointer:
         with self.cptr_to_list([0] * 100) as cptr_obj:
             moved_cptr_obj = cptr_obj + 100
             assert moved_cptr_obj.val \
-                   == cptr_obj.val + 100 * cptr_obj.sizeof
+                   == cptr_obj.val + 100 * cptr_obj.ref.sizeof
 
     def test_add_onCInt_ok(self, cint_type):
         inc_cint_obj = cint_type(100)
         with self.cptr_to_list([0] * 100) as cptr_obj:
             moved_cptr_obj = cptr_obj + inc_cint_obj
             assert moved_cptr_obj.val \
-                   == cptr_obj.val + 100 * cptr_obj.sizeof
+                   == cptr_obj.val + 100 * cptr_obj.ref.sizeof
 
     def test_sub_returnsNewPointerAtDecrementedAddress(self):
         with self.cptr_to_list([0] * 100) as cptr_obj:
             end_cptr_obj = cptr_obj + 100
             moved_cptr_obj = end_cptr_obj - 70
             assert moved_cptr_obj.val \
-                   == end_cptr_obj.val - 70 * cptr_obj.sizeof
+                   == end_cptr_obj.val - 70 * cptr_obj.ref.sizeof
 
     def test_sub_onCPointer_returnsNumberOfElementsInBetween(self):
         with self.cptr_to_list([0] * 100) as cptr_obj:

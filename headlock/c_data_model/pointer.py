@@ -62,8 +62,9 @@ class CPointer(CObj):
 
     @property
     def _as_ctypes_int(self):
+        ptr_size_int = ct.c_uint64 if ct.sizeof(ct.c_void_p)==8 else ct.c_uint32
         ptr_ptr = ct.pointer(self.ctypes_obj)
-        return ct.cast(ptr_ptr, ct.POINTER(ct.c_int)).contents
+        return ct.cast(ptr_ptr, ct.POINTER(ptr_size_int)).contents
 
     @property
     def val(self):

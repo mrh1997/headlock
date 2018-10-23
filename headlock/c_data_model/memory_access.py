@@ -20,8 +20,9 @@ class CMemory:
 
     @property
     def _ctypes_obj(self):
+        ptr_size_int = ct.c_uint64 if ct.sizeof(ct.c_void_p)==8 else ct.c_uint32
         ptr = ct.POINTER(ct.c_ubyte)()
-        ptr_ptr = ct.cast(ct.pointer(ptr), ct.POINTER(ct.c_uint))
+        ptr_ptr = ct.cast(ct.pointer(ptr), ct.POINTER(ptr_size_int))
         ptr_ptr.contents.value = self.addr
         return ptr
 
