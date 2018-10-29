@@ -125,9 +125,9 @@ class TestCFunc:
         cfunc_obj.ctypes_obj()
         logger.write.assert_called()
 
-    def test_init_fromCtypesObj_ok(self, abs_cfunc_obj):
+    def test_init_fromCtypesObj_ok(self, abs_cfunc_obj, libc):
         assert abs_cfunc_obj.pyfunc is None
-        assert abs_cfunc_obj.ctypes_obj is ct.cdll.msvcrt.abs
+        assert abs_cfunc_obj.ctypes_obj is libc.abs
         assert abs_cfunc_obj.language == 'C'
 
     def test_init_fromNoParam_raisesValueError(self, cfunc_type):

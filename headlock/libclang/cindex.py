@@ -3883,7 +3883,7 @@ class Config:
             # On Ubuntu, find_library fails and returns None
             # this will break loading below so replace with libclang.so
             if filename is None:
-                return 'libclang.so'
+                filename = 'libclang.so.1'
 
         if Config.library_path:
             filename = Config.library_path + '/' + filename

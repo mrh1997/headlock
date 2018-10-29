@@ -613,6 +613,9 @@ class TestTestSetup(object):
             ts.register_unload_event(on_unload, 3)
         assert on_unload.call_args_list == [call(3), call(2), call(1)]
 
+    @pytest.mark.skipif(sys.platform != 'win32',
+                        reason='Currently there is not Linux '
+                               'equivalent to __cdecl')
     def test_attributeAnnotationSupport_onStdIntIncluded_ok(self):
         TSDummy = self.cls_from_ccode(b'#include <stdint.h>\n'
                                       b'int __cdecl cdecl_func(void);',

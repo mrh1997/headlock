@@ -1,6 +1,6 @@
 from unittest.mock import Mock, MagicMock, patch
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-import os
+import sys
 import warnings
 from pathlib import Path
 import pytest
@@ -522,6 +522,8 @@ class TestCParser:
                            exp_typedefs={'funcproto': funcproto_def,
                                          'funcptr': funcproto_def.ptr})
 
+    @pytest.mark.skipif(sys.platform != 'win32',
+                        reason='Only supported on Windows')
     def test_readFromCursor_onDllImport_ignore(self):
         self.assert_parses('void __attribute__((dllimport)) funcname(void);')
 

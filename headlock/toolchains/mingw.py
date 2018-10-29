@@ -1,20 +1,19 @@
-import subprocess
-import os
 from pathlib import Path
 import winreg
 import itertools
 import fnmatch
 
-from ..testsetup import ToolChainDriver, BuildError
+from ..testsetup import BuildError
+from .gcc import GccToolChain
 
 
 BUILD_CACHE = set()
 
 
-class MinGWToolChain(ToolChainDriver):
+class MinGWToolChain(GccToolChain):
 
     ADDITIONAL_COMPILE_OPTIONS = []
-    ADDITIONAL_LINK_OPTIONS = []
+    ADDITIONAL_LINK_OPTIONS = ['-static-libgcc', '-static-libstdc++']
 
     ARCHITECTURE:str = None
 
@@ -26,6 +25,7 @@ class MinGWToolChain(ToolChainDriver):
                 version, thread_model, exception_model, rev)
         else:
             self.mingw_install_dir = mingw_install_dir
+        self.gcc_executable = str(self.mingw_install_dir / 'bin' / 'gcc')
 
     def _autodetect_mingw_dir(self,version, thread_model, exception_model, rev):
         def iter_uninstall_progkeys():
@@ -80,47 +80,6 @@ class MinGWToolChain(ToolChainDriver):
         return [self.mingw_install_dir
                 / f'{self.ARCHITECTURE}-w64-mingw32/include'] \
                + list(ext_incl_dir_base.glob('*.*.*/include'))[:1]
-
-    def _run_gcc(self, call_params, dest_file):
-        try:
-            print(repr([str(self.mingw_install_dir / 'bin' / 'gcc')] + call_params))
-            completed_proc = subprocess.run(
-                [str(self.mingw_install_dir / 'bin' / 'gcc')] + call_params,
-                encoding='ascii',
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            raise BuildError(f'failed to call gcc: {e}', dest_file)
-        else:
-            if completed_proc.returncode != 0:
-                raise BuildError(completed_proc.stderr, dest_file)
-
-    def exe_path(self, name, build_dir):
-        return build_dir / '__headlock__.dll'
-
-    def build(self, name, build_dir, transunits, req_libs, lib_dirs):
-        if (tuple(transunits), build_dir) in BUILD_CACHE:
-            return
-        for tu in transunits:
-            obj_file_path = build_dir / (tu.abs_src_filename.stem + '.o')
-            self._run_gcc(['-c', os.fspath(tu.abs_src_filename)]
-                          + ['-o', os.fspath(obj_file_path)]
-                          + ['-I' + os.fspath(incl_dir)
-                             for incl_dir in tu.abs_incl_dirs]
-                          + [f'-D{mname}={mval or ""}'
-                             for mname, mval in tu.predef_macros.items()]
-                          + self.ADDITIONAL_COMPILE_OPTIONS,
-                          obj_file_path)
-        exe_file_path = self.exe_path(name, build_dir)
-        self._run_gcc([str(build_dir / (tu.abs_src_filename.stem + '.o'))
-                       for tu in transunits]
-                      + ['-shared', '-o', os.fspath(exe_file_path)]
-                      + ['-static-libgcc', '-static-libstdc++']
-                      + ['-l' + req_lib for req_lib in req_libs]
-                      + ['-L' + str(lib_dir) for lib_dir in lib_dirs]
-                      + self.ADDITIONAL_LINK_OPTIONS,
-                      exe_file_path)
-        BUILD_CACHE.add((tuple(transunits), build_dir))
 
 
 class MinGW32ToolChain(MinGWToolChain):

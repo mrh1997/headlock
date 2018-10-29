@@ -1,4 +1,5 @@
 import ctypes as ct
+import sys
 import pytest
 import headlock.c_data_model as cdm
 
@@ -24,6 +25,11 @@ def cfunc_obj(cfunc_type):
     return cfunc_type(lambda:None)
 
 @pytest.fixture
-def abs_cfunc_obj(cint_type):
+def libc():
+    return ct.cdll.msvcrt if sys.platform == 'win32' else ct.CDLL('libc.so.6')
+
+
+@pytest.fixture
+def abs_cfunc_obj(cint_type, libc):
     abs_cfunc_type = cdm.CFuncType(cint_type, [cint_type])
-    return abs_cfunc_type(ct.cdll.msvcrt.abs)
+    return abs_cfunc_type(libc.abs)

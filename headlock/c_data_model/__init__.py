@@ -77,21 +77,33 @@ class CFuncPointerType(PtrArrFactoryMixIn, funcpointer.CFuncPointerType): pass
 
 class BuildInDefs:
 
-    long_long = CIntType('long long', 64, True, ct.c_int64)
-    signed_long_long = CIntType('signed long long', 64, True, ct.c_int64)
-    unsigned_long_long = CIntType('unsigned long long', 64, False, ct.c_uint64)
+    long_long = CIntType(
+        'long long', ct.sizeof(ct.c_longlong)*8, True, ct.c_longlong)
+    signed_long_long = CIntType(
+        'signed long long', ct.sizeof(ct.c_longlong)*8, True, ct.c_longlong)
+    unsigned_long_long = CIntType(
+        'unsigned long long', ct.sizeof(ct.c_ulonglong)*8, False,ct.c_ulonglong)
 
-    int = CIntType('int', 32, True, ct.c_int32)
-    signed_int = CIntType('signed int', 32, True, ct.c_int32)
-    unsigned_int = CIntType('unsigned int', 32, False, ct.c_uint32)
+    int = CIntType(
+        'int', ct.sizeof(ct.c_int)*8, True, ct.c_int)
+    signed_int = CIntType(
+        'signed int', ct.sizeof(ct.c_int)*8, True, ct.c_int)
+    unsigned_int = CIntType(
+        'unsigned int', ct.sizeof(ct.c_uint)*8, True, ct.c_uint)
 
-    short = CIntType('short', 16, True, ct.c_int16)
-    signed_short = CIntType('signed short', 16, True, ct.c_int16)
-    unsigned_short = CIntType('unsigned short', 16, False, ct.c_uint16)
+    short = CIntType(
+        'short', ct.sizeof(ct.c_short)*8, True, ct.c_short)
+    signed_short = CIntType(
+        'signed short', ct.sizeof(ct.c_short)*8, True, ct.c_short)
+    unsigned_short = CIntType(
+        'unsigned short', ct.sizeof(ct.c_ushort)*8, False, ct.c_ushort)
 
-    long = CIntType('long', 32, True, ct.c_int32)
-    signed_long = CIntType('signed long', 32, True, ct.c_int32)
-    unsigned_long = CIntType('unsigned long', 32, False, ct.c_uint32)
+    long = CIntType(
+        'long', ct.sizeof(ct.c_long)*8, True, ct.c_long)
+    signed_long = CIntType(
+        'signed long', ct.sizeof(ct.c_long)*8, True, ct.c_long)
+    unsigned_long = CIntType(
+        'unsigned long', ct.sizeof(ct.c_ulong)*8, True, ct.c_ulong)
 
     char = CIntType('char', 8, False, ct.c_char)
     signed_char = CIntType('signed char', 8, False, ct.c_char)

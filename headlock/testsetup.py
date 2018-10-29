@@ -192,6 +192,13 @@ SYS_WHITELIST = [
     'int64_t', 'uint64_t', 'wchar_t', 'size_t']
 
 
+if sys.platform == 'win32':
+    unload_library_func = ct.windll.kernel32.FreeLibrary
+elif sys.platform == 'linux':
+    unload_library_func = ct.CDLL('libdl.so').dlclose
+else:
+    raise NotImplementedError('the platform is not supported yet')
+
 class TestSetup(BuildInDefs):
 
     struct = CustomTypeContainer()
@@ -440,7 +447,7 @@ class TestSetup(BuildInDefs):
             for name in self.__globals:
                 delattr(self, name)
             self._global_refs = dict()
-            ct.windll.kernel32.FreeLibrary(self.__dll._handle)
+            unload_library_func(self.__dll._handle)
             self.__dll = None
 
     def __enter__(self):
@@ -471,9 +478,17 @@ class TestSetup(BuildInDefs):
 
 # This is a preliminary workaround until there is a clean solution on
 # how to configure toolchains.
-if platform.architecture()[0] == '32bit':
-    from .toolchains.mingw import MinGW32ToolChain
-    TestSetup.__TOOLCHAIN__ = MinGW32ToolChain()
-else:
-    from .toolchains.mingw import MinGW64ToolChain
-    TestSetup.__TOOLCHAIN__ = MinGW64ToolChain()
+if sys.platform == 'win32':
+    if platform.architecture()[0] == '32bit':
+        from .toolchains.mingw import MinGW32ToolChain
+        TestSetup.__TOOLCHAIN__ = MinGW32ToolChain()
+    else:
+        from .toolchains.mingw import MinGW64ToolChain
+        TestSetup.__TOOLCHAIN__ = MinGW64ToolChain()
+elif sys.platform == 'linux':
+    if platform.architecture()[0] == '32bit':
+        from .toolchains.gcc import Gcc32ToolChain
+        TestSetup.__TOOLCHAIN__ = Gcc32ToolChain()
+    else:
+        from .toolchains.gcc import Gcc64ToolChain
+        TestSetup.__TOOLCHAIN__ = Gcc64ToolChain()

@@ -1,6 +1,7 @@
 import operator
 import re
 import os
+import sys
 import platform
 from pathlib import Path
 import warnings
@@ -12,10 +13,16 @@ from .c_data_model import BuildInDefs, CObjType, CFuncType, CStructType, \
     CUnionType, CEnumType, CVectorType, CStruct, CUnion, CEnum
 
 
-if platform.architecture()[0] == '32bit':
-    default_llvm_dir = r'C:\Program Files (x86)\LLVM\bin'
+if sys.platform == 'win32':
+    if platform.architecture()[0] == '32bit':
+        default_llvm_dir = r'C:\Program Files (x86)\LLVM\bin'
+    else:
+        default_llvm_dir = r'C:\Program Files\LLVM\bin'
+elif sys.platform == 'linux':
+    import glob
+    default_llvm_dir = max(glob.glob(r'/usr/lib/llvm-*/lib'))
 else:
-    default_llvm_dir = r'C:\Program Files\LLVM\bin'
+    raise NotImplementedError('This operating system is not supported yet')
 Config.set_library_path(os.environ.get('LLVM_DIR', default_llvm_dir))
 Config.set_required_version(7, 0, 0)
 
