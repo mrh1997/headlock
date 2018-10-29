@@ -2,12 +2,11 @@ import pytest
 import ctypes
 import platform
 from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 from ..helpers import build_tree
 
 from headlock.testsetup import TransUnit
-from headlock.toolchains.mingw import MinGW32ToolChain
 
 if platform.architecture()[0] == '32bit':
     from headlock.toolchains.mingw import MinGW32ToolChain as MinGWxxToolChain

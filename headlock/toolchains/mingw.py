@@ -115,6 +115,7 @@ class MinGWToolChain(ToolChainDriver):
         self._run_gcc([str(build_dir / (tu.abs_src_filename.stem + '.o'))
                        for tu in transunits]
                       + ['-shared', '-o', os.fspath(exe_file_path)]
+                      + ['-static-libgcc', '-static-libstdc++']
                       + ['-l' + req_lib for req_lib in req_libs]
                       + ['-L' + str(lib_dir) for lib_dir in lib_dirs]
                       + self.ADDITIONAL_LINK_OPTIONS,
