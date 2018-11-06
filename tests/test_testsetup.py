@@ -527,13 +527,13 @@ class TestTestSetup(object):
                                      b'struct strct var;',
                                      'global_var_from_structs.c')
         with TSMock() as ts:
-            assert ts.var.cobj_type == ts.struct.strct
+            assert ts.var.ctype == ts.struct.strct
 
     def test_structWrapper_onVarFromAnonymousStruct_ok(self):
         TSMock = self.cls_from_ccode(b'struct { int a; } var;',
                                      'anonymous_structs_var.c')
         with TSMock() as ts:
-            assert [ts.var.cobj_type] == list(ts.struct.__dict__.values())
+            assert [ts.var.ctype] == list(ts.struct.__dict__.values())
 
     def test_structWrapper_onTypedefFromAnonymousStruct_renamesStructToMakeItUsableAsParameter(self):
         TSMock = self.cls_from_ccode(b'typedef struct { int a; } t;\n'
@@ -621,7 +621,7 @@ class TestTestSetup(object):
                                       b'int __cdecl cdecl_func(void);',
                                       'attr_annotation_support.c')
         with TSDummy() as ts:
-            assert '__cdecl' in ts.cdecl_func.cobj_type.c_attributes
+            assert '__cdecl' in ts.cdecl_func.ctype.c_attributes
 
     def test_subclassing_addsAttributesToDerivedClassButDoesNotModifyParentClass(self):
         TSDummy = self.cls_from_ccode(b'int func(void);\n'

@@ -39,17 +39,17 @@ class TestCStructType:
         assert cstruct_type._packing_ == 1
         assert cstruct_type.ctypes_type._pack_ == 1
 
-    @patch.object(cdm.CStructType, 'COBJ_CLASS')
-    def test_call_onPositionAndKeywordArgs_mergesParameters(self, COBJ_CLASS, cstruct_type):
-        cobj = cstruct_type(1, 2, _depends_on_=3, member_int2=4)
-        assert cobj is COBJ_CLASS.return_value
-        COBJ_CLASS.assert_called_once_with(
+    @patch.object(cdm.CStructType, 'CPROXY_CLASS')
+    def test_call_onPositionAndKeywordArgs_mergesParameters(self, CPROXY_CLASS, cstruct_type):
+        cproxy = cstruct_type(1, 2, _depends_on_=3, member_int2=4)
+        assert cproxy is CPROXY_CLASS.return_value
+        CPROXY_CLASS.assert_called_once_with(
             cstruct_type, dict(member_int=1, member_short=2, member_int2=4), 3)
 
-    @patch.object(cdm.CStructType, 'COBJ_CLASS')
-    def test_call_onNoParams_ok(self, COBJ_CLASS, cstruct_type):
+    @patch.object(cdm.CStructType, 'CPROXY_CLASS')
+    def test_call_onNoParams_ok(self, CPROXY_CLASS, cstruct_type):
         cstruct_type()
-        COBJ_CLASS.assert_called_once_with(cstruct_type, {}, None)
+        CPROXY_CLASS.assert_called_once_with(cstruct_type, {}, None)
 
     def test_sizeof_onNoExplicitPacking_returnsSizeOfUnpackedStruct(self, cstruct_type, cint_type, cint16_type):
         unpacked_cstruct_type = cdm.CStructType(
@@ -292,15 +292,15 @@ class TestCStruct:
     def test_getItem_onStrings_returnsPyObjOfMember(self, cstruct_type, cint_type, cint16_type):
         cstruct_obj = cstruct_type(111111, 222, 3)
         member_cint_obj = cstruct_obj['member_int']
-        assert member_cint_obj.cobj_type == cint_type
+        assert member_cint_obj.ctype == cint_type
         assert member_cint_obj.adr.val == cstruct_obj.adr.val
         assert member_cint_obj.val == 111111
         member_cshort_obj = cstruct_obj['member_short']
-        assert member_cshort_obj.cobj_type == cint16_type
+        assert member_cshort_obj.ctype == cint16_type
         assert member_cshort_obj.adr.val > cstruct_obj.adr.val
         assert member_cshort_obj.val == 222
         member_cint2_obj = cstruct_obj['member_int2']
-        assert member_cint2_obj.cobj_type == cint_type
+        assert member_cint2_obj.ctype == cint_type
         assert member_cint2_obj.adr.val > cstruct_obj.adr.val
         assert member_cint2_obj.val == 3
 
@@ -325,7 +325,7 @@ class TestCStruct:
         assert cstruct_obj.member_short.adr == cstruct_obj['member_short'].adr
 
     @pytest.mark.parametrize('name', ['mem', 'val', 'adr', 'tuple', 'sizeof',
-                                      'cobj_type'])
+                                      'ctype'])
     def test_GetAttr_OnStructMemberWithReservedName_returnsReservedObj(self, name, cint_type):
         cstruct_type = cdm.CStructType(
             'StructWithReservedMemberNames',

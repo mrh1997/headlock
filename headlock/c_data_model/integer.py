@@ -1,9 +1,9 @@
 import collections
 
-from .core import CObjType, CObj
+from .core import CProxyType, CProxy
 
 
-class CIntType(CObjType):
+class CIntType(CProxyType):
 
     def __init__(self, c_name, bits, signed, ctypes_type):
         super().__init__(ctypes_type)
@@ -36,7 +36,7 @@ class CIntType(CObjType):
                 + ''.join(a+'_' for a in sorted(self.c_attributes)) \
                 + self.c_name.replace(' ', '_'))
 
-class CInt(CObj):
+class CInt(CProxy):
 
     @property
     def val(self):
@@ -58,7 +58,7 @@ class CInt(CObj):
         if isinstance(pyobj, int):
             self.ctypes_obj.value = pyobj
         else:
-            CObj.val.fset(self, pyobj)
+            CProxy.val.fset(self, pyobj)
 
     def __int__(self):
         return self.val
@@ -67,10 +67,10 @@ class CInt(CObj):
         return self.val
 
     def __repr__(self):
-        if self.cobj_type.bits == 8 and self.cobj_type.signed:
-            return f'ts.{self.cobj_type.c_name}({bytes([self.val])!r})'
+        if self.ctype.bits == 8 and self.ctype.signed:
+            return f'ts.{self.ctype.c_name}({bytes([self.val])!r})'
         else:
             return super().__repr__()
 
 
-CIntType.COBJ_CLASS = CInt
+CIntType.CPROXY_CLASS = CInt

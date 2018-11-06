@@ -1,9 +1,9 @@
 import collections
 import ctypes as ct
-from .core import CObjType, CObj
+from .core import CProxyType, CProxy
 
 
-class CStructType(CObjType):
+class CStructType(CProxyType):
 
     __NEXT_ANONYMOUS_ID__ = 1
 
@@ -26,11 +26,11 @@ class CStructType(CObjType):
         self._members_ = dict(member_types)
         self._members_order_ = [nm for nm, tp in member_types]
         if member_types:
-            self.ctypes_type._fields_ = [(nm, cobj_type.ctypes_type)
-                                         for nm, cobj_type in member_types]
-        for nm, cobj_type in member_types:
+            self.ctypes_type._fields_ = [(nm, ctype.ctypes_type)
+                                         for nm, ctype in member_types]
+        for nm, ctype in member_types:
             if nm and not hasattr(self, nm):
-                setattr(self, nm, cobj_type)
+                setattr(self, nm, ctype)
 
     def __call__(self, *args, _depends_on_=None, **argv):
         argv.update(zip(self._members_order_, args))
@@ -45,8 +45,8 @@ class CStructType(CObjType):
 
     @property
     def null_val(cls):
-        return {name: cobj_type.null_val
-                for name, cobj_type in cls._members_.items()}
+        return {name: ctype.null_val
+                for name, ctype in cls._members_.items()}
 
     def shallow_eq(self, other):
         return super().shallow_eq(other) \
@@ -99,23 +99,23 @@ class CStructType(CObjType):
 
 
 
-class CStruct(CObj):
+class CStruct(CProxy):
 
     def __repr__(self):
-        params = (name + '=' + repr(cobj.val)
-                  for name, cobj in zip(self.cobj_type._members_order_, self))
-        return repr(self.cobj_type) + '(' + ', '.join(params) + ')'
+        params = (name + '=' + repr(cproxy.val)
+                  for name, cproxy in zip(self.ctype._members_order_, self))
+        return repr(self.ctype) + '(' + ', '.join(params) + ')'
 
     def __getitem__(self, member_id):
         if isinstance(member_id, str):
             member_name = member_id
         else:
-            member_name = self.cobj_type._members_order_[member_id]
-        member_type = self.cobj_type._members_[member_name]
+            member_name = self.ctype._members_order_[member_id]
+        member_type = self.ctype._members_[member_name]
         struct_adr = ct.addressof(self.ctypes_obj)
-        offset = getattr(self.cobj_type.ctypes_type, member_name).offset
+        offset = getattr(self.ctype.ctypes_type, member_name).offset
         ctypes_obj = member_type.ctypes_type.from_address(struct_adr + offset)
-        return member_type.COBJ_CLASS(member_type, ctypes_obj,_depends_on_=self)
+        return member_type.CPROXY_CLASS(member_type, ctypes_obj,_depends_on_=self)
 
     def __getattr__(self, name):
         try:
@@ -125,39 +125,39 @@ class CStruct(CObj):
 
     @property
     def tuple(self):
-        return tuple(cobj.val for cobj in self)
+        return tuple(cproxy.val for cproxy in self)
 
     @tuple.setter
     def tuple(self, new_tuple):
-        if len(new_tuple) > len(self.cobj_type._members_):
+        if len(new_tuple) > len(self.ctype._members_):
             raise ValueError('too much entries in tuple')
         else:
-            self.val = dict(zip(self.cobj_type._members_order_, new_tuple))
+            self.val = dict(zip(self.ctype._members_order_, new_tuple))
 
     @property
     def val(self):
-        return {name: cobj.val
-                for name, cobj in zip(self.cobj_type._members_order_, self)}
+        return {name: cproxy.val
+                for name, cproxy in zip(self.ctype._members_order_, self)}
 
     @val.setter
     def val(self, new_val):
         if isinstance(new_val, collections.Iterator):
             new_val = list(new_val)
         if isinstance(new_val, collections.Sequence):
-            new_val = dict(zip(self.cobj_type._members_order_, new_val))
-        for name in self.cobj_type._members_order_:
+            new_val = dict(zip(self.ctype._members_order_, new_val))
+        for name in self.ctype._members_order_:
             member = self[name]
             try:
                 val = new_val[name]
             except KeyError:
-                member.val = member.cobj_type.null_val
+                member.val = member.ctype.null_val
             else:
                 member.val = val
 
     def __len__(self):
-        return len(self.cobj_type._members_)
+        return len(self.ctype._members_)
 
 
-CStructType.COBJ_CLASS = CStruct
+CStructType.CPROXY_CLASS = CStruct
 
 

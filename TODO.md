@@ -1,7 +1,6 @@
 Interface changing
 ------------------
  * subtracting pointers returns int instead of CInt
- * rename CObj -> CProxy and CObjType -> CProxyType
  * implicit add zero element to .alloc_ptr(...) and .ptr on iterables
  * travis integration + pip deployment automatisieren bei tag
  * rework datamodel:

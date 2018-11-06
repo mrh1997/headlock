@@ -1,14 +1,14 @@
 import ctypes as ct
 import collections, itertools
-from .core import CObjType, CObj, isinstance_ctypes, WriteProtectError
+from .core import CProxyType, CProxy, isinstance_ctypes, WriteProtectError
 from .array import CArray, map_unicode_to_list
 
 
-class CPointerType(CObjType):
+class CPointerType(CProxyType):
 
     PRECEDENCE = 10
 
-    def __init__(self, base_type:CObjType, ctypes_type=None):
+    def __init__(self, base_type:CProxyType, ctypes_type=None):
         super().__init__(ctypes_type or ct.POINTER(base_type.ctypes_type))
         self.base_type = base_type
 
@@ -35,29 +35,29 @@ class CPointerType(CObjType):
                         + ['ptr'])
 
 
-class CPointer(CObj):
+class CPointer(CProxy):
 
-    def __init__(self, cobj_type:CPointerType, init_val=None,
+    def __init__(self, ctype:CPointerType, init_val=None,
                  _depends_on_=None):
         if isinstance(init_val, collections.Iterable) \
-                and not isinstance(init_val, CObj) \
+                and not isinstance(init_val, CProxy) \
                 and not isinstance_ctypes(init_val) \
                 and not isinstance(init_val, int):
             assert _depends_on_ is None
-            init_val = cobj_type.base_type.alloc_ptr(init_val)
-        super().__init__(cobj_type, init_val, _depends_on_)
+            init_val = ctype.base_type.alloc_ptr(init_val)
+        super().__init__(ctype, init_val, _depends_on_)
 
     @property
-    def base_type(self) -> CObjType:
-        return self.cobj_type.base_type
+    def base_type(self) -> CProxyType:
+        return self.ctype.base_type
 
     @property
     def ref(self):
-        if self.cobj_type.ctypes_type == ct.c_void_p:
+        if self.ctype.ctypes_type == ct.c_void_p:
             ptr = ct.cast(self.ctypes_obj, ct.POINTER(ct.c_ubyte))
         else:
             ptr = self.ctypes_obj
-        return self.base_type.COBJ_CLASS(self.base_type, ptr.contents,
+        return self.base_type.CPROXY_CLASS(self.base_type, ptr.contents,
                                          _depends_on_=self._depends_on_)
 
     @property
@@ -72,14 +72,14 @@ class CPointer(CObj):
 
     @val.setter
     def val(self, pyobj):
-        if self.cobj_type.has_attr('const') and self._initialized:
+        if self.ctype.has_attr('const') and self._initialized:
             raise WriteProtectError()
         elif isinstance(pyobj, int):
             self._as_ctypes_int.value = pyobj
         elif isinstance(pyobj, CArray) and self.base_type == pyobj.base_type:
             self.val = pyobj.adr.val
         elif isinstance(pyobj, collections.Iterable) \
-                and not isinstance(pyobj, CObj):
+                and not isinstance(pyobj, CProxy):
             if isinstance(pyobj, str):
                 pyobj = map_unicode_to_list(pyobj, self.base_type)
             elif isinstance(pyobj, (bytes, bytearray)):
@@ -87,7 +87,7 @@ class CPointer(CObj):
             for ndx, item in enumerate(pyobj):
                 self[ndx].val = item
         else:
-            CObj.val.fset(self, pyobj)
+            CProxy.val.fset(self, pyobj)
 
     @property
     def c_str(self):
@@ -109,19 +109,19 @@ class CPointer(CObj):
     def unicode_str(self, new_val):
         self.val = new_val
 
-    def _cast_from(self, cobj):
-        if isinstance(cobj, CArray):
-            self.val = cobj.adr.val
-            self._depends_on_ = cobj
+    def _cast_from(self, cproxy):
+        if isinstance(cproxy, CArray):
+            self.val = cproxy.adr.val
+            self._depends_on_ = cproxy
         else:
-            super(CPointer, self)._cast_from(cobj)
-            if isinstance(cobj, CPointer):
-                self._depends_on_ = cobj._depends_on_
+            super(CPointer, self)._cast_from(cproxy)
+            if isinstance(cproxy, CPointer):
+                self._depends_on_ = cproxy._depends_on_
 
     def __repr__(self):
         digits = ct.sizeof(ct.c_int) * 2
         fmt_str = '{!r}(0x{:0' + str(digits) + 'X})'
-        return fmt_str.format(self.cobj_type, self.val)
+        return fmt_str.format(self.ctype, self.val)
 
     def __add__(self, offs):
         newobj = self.copy()
@@ -134,18 +134,18 @@ class CPointer(CObj):
 
     def __sub__(self, other):
         if isinstance(other, CPointer):
-            if self.cobj_type != other.cobj_type:
+            if self.ctype != other.ctype:
                 raise TypeError(
                     f'Cannot subtract pointers of different types '
-                    f'({self.cobj_type.c_definition()} '
-                    f'and {other.cobj_type.c_definition()})')
+                    f'({self.ctype.c_definition()} '
+                    f'and {other.ctype.c_definition()})')
             return (self.val - other.val) // self.base_type.sizeof
         if isinstance(other, CArray):
-            if self.cobj_type.base_type != other.cobj_type.base_type:
+            if self.ctype.base_type != other.ctype.base_type:
                 raise TypeError(
                     f'Cannot subtract array from pointer of different types '
-                    f'({self.cobj_type.c_definition()} '
-                    f'and {other.cobj_type.c_definition()})')
+                    f'({self.ctype.c_definition()} '
+                    f'and {other.ctype.c_definition()})')
             return (self.val - other[0].adr.val) // self.base_type.sizeof
         else:
             newobj = self.copy()
@@ -173,4 +173,4 @@ class CPointer(CObj):
     def __int__(self):
         return self.val
 
-CPointerType.COBJ_CLASS = CPointer
+CPointerType.CPROXY_CLASS = CPointer

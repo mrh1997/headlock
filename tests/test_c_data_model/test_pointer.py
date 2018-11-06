@@ -15,17 +15,17 @@ def cptr_type(cint_type):
 class TestCPointerType:
 
     def test_init_onPtrType_returnsInitializedPointerObj(self):
-        cobj_type = Mock()
+        ctype = Mock()
         ctypes_type = Mock()
-        cptr_type = cdm.CPointerType(cobj_type, ctypes_type)
-        assert cptr_type.base_type is cobj_type
+        cptr_type = cdm.CPointerType(ctype, ctypes_type)
+        assert cptr_type.base_type is ctype
         assert cptr_type.ctypes_type is ctypes_type
 
     def test_init_onDefaultParams_ok(self):
-        cobj_type = Mock()
-        cobj_type.ctypes_type = ct.c_float
-        cobj_type.c_name = 'base_type_name'
-        cptr_type = cdm.CPointerType(cobj_type)
+        ctype = Mock()
+        ctype.ctypes_type = ct.c_float
+        ctype.c_name = 'base_type_name'
+        cptr_type = cdm.CPointerType(ctype)
         assert cptr_type.ctypes_type is ct.POINTER(ct.c_float)
 
     def test_shallowIterSubTypes_onNotEmbeddedDefsOnlyIsFalse_returnsReferredTypeElementaryTypes(self, cptr_type):
@@ -60,10 +60,10 @@ class TestCPointerType:
         assert cint_type.ptr.c_definition('ab') == 'typename *ab'
 
     def test_repr_returnsBaseNamePlusPtr(self):
-        cobj_type = MagicMock()
-        cobj_type.__repr__ = Mock(return_value='ts.basetype')
-        cobj_type.ctypes_type = ct.c_int
-        cptr_type = cdm.CPointerType(cobj_type).with_attr('attr')
+        ctype = MagicMock()
+        ctype.__repr__ = Mock(return_value='ts.basetype')
+        ctype.ctypes_type = ct.c_int
+        cptr_type = cdm.CPointerType(ctype).with_attr('attr')
         assert repr(cptr_type) == 'ts.basetype_attr_ptr'
 
 
@@ -199,9 +199,9 @@ class TestCPointer:
         ctypes_obj = ct.c_uint32()
         ref_adr = ct.addressof(ctypes_obj)
         cptr_obj = cdm.CPointer(cptr_type, ref_adr, None)
-        ref_cobj = cptr_obj.ref
-        assert ct.addressof(ref_cobj.ctypes_obj) == ref_adr
-        assert ref_cobj.cobj_type == cptr_obj.base_type
+        ref_cproxy = cptr_obj.ref
+        assert ct.addressof(ref_cproxy.ctypes_obj) == ref_adr
+        assert ref_cproxy.ctype == cptr_obj.base_type
 
     def test_add_returnsNewPointerAtIncrementedAddress(self):
         with self.cptr_to_list([0] * 100) as cptr_obj:
@@ -226,9 +226,9 @@ class TestCPointer:
     def test_sub_onCPointer_returnsNumberOfElementsInBetween(self):
         with self.cptr_to_list([0] * 100) as cptr_obj:
             end_cptr_obj = cptr_obj + 100
-            diff_cobj_obj = end_cptr_obj - cptr_obj
-            assert isinstance(diff_cobj_obj, int)
-            assert diff_cobj_obj == 100
+            diff_cproxy_obj = end_cptr_obj - cptr_obj
+            assert isinstance(diff_cproxy_obj, int)
+            assert diff_cproxy_obj == 100
 
     def test_sub_onCPointerOfDifferrentType_raisesTypeError(self):
         cptr_type1 = cdm.CPointerType(cdm.CIntType('name1', 32, True, ct.c_int))
@@ -250,11 +250,11 @@ class TestCPointer:
             moved_cptr_obj = cptr_obj + 100 - cint_obj
         assert moved_cptr_obj.val == cptr_obj.val
 
-    def test_getItem_onNdx_returnsCObjAtNdx(self):
+    def test_getItem_onNdx_returnsCProxyAtNdx(self):
         with self.cptr_to_list([0x11, 0x22, 0x33]) as cptr_obj:
             assert cptr_obj[1].val == 0x22
 
-    def test_getItem_onSlice_returnsCArrayOfCObjAtSlice(self):
+    def test_getItem_onSlice_returnsCArrayOfCProxyAtSlice(self):
         with self.cptr_to_list([0x11, 0x22, 0x33, 0x44]) as cptr_obj:
             carray_obj = cptr_obj[1:3]
             assert isinstance(carray_obj, cdm.CArray)

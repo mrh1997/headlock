@@ -24,9 +24,9 @@ def isinstance_ctypes(obj):
     return issubclass_ctypes(type(obj))
 
 
-class CObjType:
+class CProxyType:
 
-    COBJ_CLASS:type = None
+    CPROXY_CLASS:type = None
 
     PRECEDENCE = 0
 
@@ -35,7 +35,7 @@ class CObjType:
         self.ctypes_type = ctypes_type
 
     def __call__(self, init_obj=None, _depends_on_=None):
-        return self.COBJ_CLASS(self, init_obj, _depends_on_)
+        return self.CPROXY_CLASS(self, init_obj, _depends_on_)
 
     def __bool__(self):
         return True
@@ -47,13 +47,13 @@ class CObjType:
             remaining = [(self, other)]
             processed = set()
             while remaining:
-                (self_cobj_type, other_cobj_type) = remaining.pop()
-                if (id(self_cobj_type), id(other_cobj_type)) not in processed:
-                    if not self_cobj_type.shallow_eq(other_cobj_type):
+                (self_ctype, other_ctype) = remaining.pop()
+                if (id(self_ctype), id(other_ctype)) not in processed:
+                    if not self_ctype.shallow_eq(other_ctype):
                         return False
-                    remaining += zip(self_cobj_type.shallow_iter_subtypes(),
-                                     other_cobj_type.shallow_iter_subtypes())
-                    processed.add( (id(self_cobj_type), id(other_cobj_type)) )
+                    remaining += zip(self_ctype.shallow_iter_subtypes(),
+                                     other_ctype.shallow_iter_subtypes())
+                    processed.add( (id(self_ctype), id(other_ctype)) )
             return True
 
     def shallow_eq(self, other):
@@ -126,42 +126,42 @@ class CObjType:
         return attr_name in self.c_attributes
 
 
-class CObj:
+class CProxy:
 
-    def __init__(self, cobj_type:CObjType, init_obj=None, _depends_on_=None):
-        super(CObj, self).__init__()
-        self.cobj_type =  cobj_type
+    def __init__(self, ctype:CProxyType, init_obj=None, _depends_on_=None):
+        super(CProxy, self).__init__()
+        self.ctype =  ctype
         self._initialized = False
         self._depends_on_ = _depends_on_
         if isinstance_ctypes(init_obj):
             self.ctypes_obj = init_obj
         else:
-            self.ctypes_obj = self.cobj_type.ctypes_type()
+            self.ctypes_obj = self.ctype.ctypes_type()
             if init_obj is None:
-                self.val = self.cobj_type.null_val
-            elif isinstance(init_obj, CObj):
+                self.val = self.ctype.null_val
+            elif isinstance(init_obj, CProxy):
                 self._cast_from(init_obj)
             else:
                 self.val = init_obj
         self._initialized = True
 
     def __repr__(self):
-        return f'{self.cobj_type!r}({self.val!r})'
+        return f'{self.ctype!r}({self.val!r})'
 
     def __bool__(self):
-        return self.val != self.cobj_type.null_val
+        return self.val != self.ctype.null_val
 
     @property
     def adr(self):
-        ptr = self.cobj_type.ptr
+        ptr = self.ctype.ptr
         return ptr(ptr.ctypes_type(self.ctypes_obj), _depends_on_=self)
 
     @property
     def sizeof(self):
-        return self.cobj_type.sizeof
+        return self.ctype.sizeof
 
-    def _cast_from(self, cobj):
-        self.val = cobj.val
+    def _cast_from(self, cproxy):
+        self.val = cproxy.val
 
     @property
     def val(self):
@@ -169,7 +169,7 @@ class CObj:
 
     @val.setter
     def val(self, pyobj):
-        if isinstance(pyobj, CObj):
+        if isinstance(pyobj, CProxy):
             self.val = pyobj.val
         else:
             try:
@@ -178,7 +178,7 @@ class CObj:
                 raise ValueError(f'{pyobj!r} cannot be converted to {self!r}')
 
     def __eq__(self, other):
-        if isinstance(other, CObj):
+        if isinstance(other, CProxy):
             return self.val == other.val
         else:
             return self.val == other
@@ -187,40 +187,40 @@ class CObj:
         return not self == other
 
     def __gt__(self, other):
-        if isinstance(other, CObj):
-            return self.cobj_type == self.cobj_type and self.val > other.val
+        if isinstance(other, CProxy):
+            return self.ctype == self.ctype and self.val > other.val
         else:
             return self.val > other
 
     def __lt__(self, other):
-        if isinstance(other, CObj):
-            return self.cobj_type == self.cobj_type and self.val < other.val
+        if isinstance(other, CProxy):
+            return self.ctype == self.ctype and self.val < other.val
         else:
             return self.val < other
 
     def __ge__(self, other):
-        if isinstance(other, CObj):
-            return self.cobj_type == self.cobj_type and self.val >= other.val
+        if isinstance(other, CProxy):
+            return self.ctype == self.ctype and self.val >= other.val
         else:
             return self.val >= other
 
     def __le__(self, other):
-        if isinstance(other, CObj):
-            return self.cobj_type == self.cobj_type and self.val <= other.val
+        if isinstance(other, CProxy):
+            return self.ctype == self.ctype and self.val <= other.val
         else:
             return self.val <= other
 
     def __add__(self, other):
-        return self.cobj_type(self.val + int(other))
+        return self.ctype(self.val + int(other))
 
     def __sub__(self, other):
-        return self.cobj_type(self.val - int(other))
+        return self.ctype(self.val - int(other))
 
     def __radd__(self, other):
-        return self.cobj_type(int(other) + self.val)
+        return self.ctype(int(other) + self.val)
 
     def __rsub__(self, other):
-        return self.cobj_type(int(other) - self.val)
+        return self.ctype(int(other) - self.val)
 
     def __iadd__(self, other):
         self.val += int(other)
@@ -231,16 +231,16 @@ class CObj:
         return self
 
     def copy(self):
-        return self.cobj_type(self.val)
+        return self.ctype(self.val)
 
     @property
     def mem(self):
-        readonly = self.cobj_type.has_attr('const')
+        readonly = self.ctype.has_attr('const')
         return CMemory(ct.addressof(self.ctypes_obj), None, readonly)
 
     @mem.setter
     def mem(self, new_val):
-        if self.cobj_type.has_attr('const'):
+        if self.ctype.has_attr('const'):
             raise WriteProtectError()
         ptr = ct.cast(ct.pointer(self.ctypes_obj), ct.POINTER(ct.c_ubyte))
         for ndx in range(len(new_val)):

@@ -96,14 +96,14 @@ class TestCFuncType:
         assert repr(cfunc_type) \
                == "CFuncType(None, []).with_attr('attrA').with_attr('attrB')"
 
-    @patch.object(cdm.CFuncType, 'COBJ_CLASS')
-    def test_call_withLoggerKeyword_passesLoggerToCFunc(self, COBJ_CLASS):
+    @patch.object(cdm.CFuncType, 'CPROXY_CLASS')
+    def test_call_withLoggerKeyword_passesLoggerToCFunc(self, CPROXY_CLASS):
         cfunc_type = cdm.CFuncType()
         logger = Mock()
         func = Mock()
         cfunc_obj = cfunc_type(func, logger=logger)
-        assert cfunc_obj is COBJ_CLASS.return_value
-        COBJ_CLASS.assert_called_with(cfunc_type, func, None, logger=logger)
+        assert cfunc_obj is CPROXY_CLASS.return_value
+        CPROXY_CLASS.assert_called_with(cfunc_type, func, None, logger=logger)
 
 
 class TestCFunc:
@@ -161,20 +161,20 @@ class TestCFunc:
         cfunc_obj()
         py_callable.assert_called_once()
 
-    def test_call_onCObjs_ok(self, cint_type, cint16_type):
+    def test_call_onCProxys_ok(self, cint_type, cint16_type):
         @cdm.CFuncType(None, [cint_type, cint16_type])
         def cfunc_obj(*args):
             assert args == (12, 34)
         cfunc_obj(cint_type(12), cint16_type(34))
 
-    def test_call_onPyObjs_convertsArgsToCObj(self, cint_type, cint16_type):
+    def test_call_onPyObjs_convertsArgsToCProxy(self, cint_type, cint16_type):
         @cdm.CFuncType(None, [cint_type, cint16_type])
         def cfunc_obj(p1, p2):
-            assert p1.cobj_type.bits == 32 and p2.cobj_type.bits == 16
+            assert p1.ctype.bits == 32 and p2.ctype.bits == 16
             assert p1.val == 12 and  p2.val == 34
         cfunc_obj(12, 34)
 
-    def test_call_onResult_returnsCObj(self, cint_type):
+    def test_call_onResult_returnsCProxy(self, cint_type):
         @cdm.CFuncType(cint_type)
         def cfunc_obj():
             return 123

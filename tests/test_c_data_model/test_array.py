@@ -59,10 +59,10 @@ class TestCArrayType:
         assert cint_type.array(10).ptr.c_definition('x') == 'typename (*x)[10]'
 
     def test_repr_returnsBaseNamePlusArray(self):
-        cobj_type = MagicMock()
-        cobj_type.__repr__ = Mock(return_value='ts.basetype')
-        cobj_type.ctypes_type = ct.c_int
-        cptr_type = cdm.CArrayType(cobj_type, 123).with_attr('attr')
+        ctype = MagicMock()
+        ctype.__repr__ = Mock(return_value='ts.basetype')
+        ctype.ctypes_type = ct.c_int
+        cptr_type = cdm.CArrayType(ctype, 123).with_attr('attr')
         assert repr(cptr_type) == 'ts.basetype_attr_array123'
 
 
@@ -166,8 +166,8 @@ class TestCArray:
         carray_obj.unicode_str = '\u1234\x56\0\x78'
         assert carray_obj.val == [0x1234, 0x56, 0, 0x78, 0, 0]
 
-    def adr_of(self, cobj_obj):
-        return ct.addressof(cobj_obj.ctypes_obj)
+    def adr_of(self, cproxy_obj):
+        return ct.addressof(cproxy_obj.ctypes_obj)
 
     def test_getItem_returnsObjectAtNdx(self):
         carray_obj = self.create_int_carray_obj(16, [1, 2, 3, 4])
@@ -204,9 +204,9 @@ class TestCArray:
 
     def test_add_returnsPointer(self):
         carray_obj = self.create_int_carray_obj(8, [0x11] * 32)
-        added_cobj = carray_obj + 3
-        assert isinstance(added_cobj, cdm.CPointer)
-        assert added_cobj.val == self.adr_of(carray_obj[3])
+        added_cproxy = carray_obj + 3
+        assert isinstance(added_cproxy, cdm.CPointer)
+        assert added_cproxy.val == self.adr_of(carray_obj[3])
 
     def test_repr_returnsClassNameAndContent(self, cint_type):
         carray_type = cdm.CArrayType(cint_type, 3)

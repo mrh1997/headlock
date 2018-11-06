@@ -1,16 +1,16 @@
 import sys
 import ctypes as ct
-from .core import CObjType, CObj, issubclass_ctypes_ptr, isinstance_ctypes
+from .core import CProxyType, CProxy, issubclass_ctypes_ptr, isinstance_ctypes
 from .void import CVoidType
 
 
 last_tunnelled_exception = None
 
-class CFuncType(CObjType):
+class CFuncType(CProxyType):
 
     PRECEDENCE = 20
 
-    def __init__(self, returns:CObjType=None, args:list=None):
+    def __init__(self, returns:CProxyType=None, args:list=None):
         self.returns = returns
         self.args = args or []
         self.language = "C"
@@ -20,8 +20,8 @@ class CFuncType(CObjType):
             self.ctypes_returns = ct.c_void_p
         else:
             self.ctypes_returns = returns.ctypes_type
-        self.ctypes_args = tuple(cobj_type.ctypes_type
-                                 for cobj_type in self.args)
+        self.ctypes_args = tuple(ctype.ctypes_type
+                                 for ctype in self.args)
         super().__init__(
             ct.CFUNCTYPE(self.ctypes_returns, *self.ctypes_args))
 
@@ -74,14 +74,14 @@ class CFuncType(CObjType):
         return f'CFuncType({self.returns!r}, [{arg_repr_str}]){attr_calls_str}'
 
     def __call__(self, init_obj=None, _depends_on_=None, logger=None):
-        return self.COBJ_CLASS(self, init_obj, _depends_on_, logger=logger)
+        return self.CPROXY_CLASS(self, init_obj, _depends_on_, logger=logger)
 
 
-class CFunc(CObj):
+class CFunc(CProxy):
 
-    def __init__(self, cobj_type:CFuncType, init_obj=None, name:str=None,
-                 logger=None, _depends_on_:CObj=None):
-        cobj_type:CFuncType
+    def __init__(self, ctype:CFuncType, init_obj=None, name:str=None,
+                 logger=None, _depends_on_:CProxy=None):
+        ctype:CFuncType
         if not callable(init_obj):
             raise ValueError('expect callable as first parameter')
         self.name = name or (init_obj.__name__
@@ -89,19 +89,19 @@ class CFunc(CObj):
         if isinstance_ctypes(init_obj):
             self.language = 'C'
             self.pyfunc = None
-        elif isinstance(init_obj, CObj):
+        elif isinstance(init_obj, CProxy):
             pass
         else:
             self.language = 'PYTHON'
             self.pyfunc = init_obj
-            init_obj = cobj_type.ctypes_type(self.wrapped_pyfunc(
+            init_obj = ctype.ctypes_type(self.wrapped_pyfunc(
                 init_obj,
                 self.name,
-                cobj_type.args,
-                cobj_type.returns,
+                ctype.args,
+                ctype.returns,
                 logger))
         self.logger = logger
-        super(CFunc, self).__init__(cobj_type, init_obj, _depends_on_)
+        super(CFunc, self).__init__(ctype, init_obj, _depends_on_)
 
     @staticmethod
     def wrapped_pyfunc(pyfunc, name, arg_types, return_type, logger):
@@ -136,24 +136,24 @@ class CFunc(CObj):
 
     def __call__(self, *args):
         global last_tunnelled_exception
-        if len(args) != len(self.cobj_type.args):
-            raise TypeError(f'{self.name}() requires {len(self.cobj_type.args)} '
+        if len(args) != len(self.ctype.args):
+            raise TypeError(f'{self.name}() requires {len(self.ctype.args)} '
                             f'parameters, but got {len(args)}')
-        args = [arg_cls(arg) for arg_cls, arg in zip(self.cobj_type.args, args)]
+        args = [arg_cls(arg) for arg_cls, arg in zip(self.ctype.args, args)]
         if self.logger:
             self.logger.write(self.name or '???')
             self.logger.write('(' + ', '.join(map(repr, args)) + ')\n')
-        self.ctypes_obj.argtypes = self.cobj_type.ctypes_args
-        self.ctypes_obj.restype = self.cobj_type.ctypes_returns
+        self.ctypes_obj.argtypes = self.ctype.ctypes_args
+        self.ctypes_obj.restype = self.ctype.ctypes_returns
         result = self.ctypes_obj(*[a.ctypes_obj for a in args])
         if last_tunnelled_exception is not None:
             exc = last_tunnelled_exception
             last_tunnelled_exception = None
             raise exc[0](exc[1]).with_traceback(exc[2])
-        elif self.cobj_type.returns is None:
+        elif self.ctype.returns is None:
             return None
         else:
-            result = self.cobj_type.returns(result)
+            result = self.ctype.returns(result)
             if self.logger:
                 self.logger.write('-> ' +  repr(result) + '\n')
             return result
@@ -182,6 +182,6 @@ class CFunc(CObj):
         ptr_size_int = ct.c_uint64 if ct.sizeof(ct.c_void_p)==8 else ct.c_uint32
         ctypes_ptr = ct.cast(ct.pointer(self.ctypes_obj),
                              ct.POINTER(ptr_size_int))
-        return self.cobj_type.ptr(ctypes_ptr.contents.value, _depends_on_=self)
+        return self.ctype.ptr(ctypes_ptr.contents.value, _depends_on_=self)
 
-CFuncType.COBJ_CLASS = CFunc
+CFuncType.CPROXY_CLASS = CFunc

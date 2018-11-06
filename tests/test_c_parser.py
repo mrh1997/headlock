@@ -276,9 +276,9 @@ class TestCParser:
         assert parser.vars == (exp_vars or {})
         assert parser.implementations == (exp_impls or set())
 
-    def assert_parses_as_type(self, srccode, exp_cobj_type):
+    def assert_parses_as_type(self, srccode, exp_ctype):
         self.assert_parses('extern ' + srccode + ';',
-                           exp_vars={'x': exp_cobj_type})
+                           exp_vars={'x': exp_ctype})
 
     def test_readFromCursor_onEmptyFile_addsNoEntries(self):
         self.assert_parses('', {})

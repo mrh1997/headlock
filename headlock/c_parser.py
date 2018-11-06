@@ -9,7 +9,7 @@ from typing import Dict, List, Any, ByteString, Union
 
 from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
     TranslationUnit, Config, TranslationUnitLoadError, Cursor, Type
-from .c_data_model import BuildInDefs, CObjType, CFuncType, CStructType, \
+from .c_data_model import BuildInDefs, CProxyType, CFuncType, CStructType, \
     CUnionType, CEnumType, CVectorType, CStruct, CUnion, CEnum
 
 
@@ -234,7 +234,7 @@ class CParser:
         self.macros = {nm: MacroDef.create_from_srccode(f'{nm} {content or ""}')
                        for nm, content in self.predef_macros.items()}
         self.typedefs = {n: t for n, t in BuildInDefs.__dict__.items()
-                         if isinstance(t, CObjType)}
+                         if isinstance(t, CProxyType)}
         self.structs = {}
         self.vars = {}
         self.funcs = {}
@@ -313,9 +313,9 @@ class CParser:
             else:
                 ret_objtype = self.convert_type_from_cursor(
                     type_crs.get_result())
-            arg_cobjtypes = [self.convert_type_from_cursor(param)
+            arg_cproxytypes = [self.convert_type_from_cursor(param)
                              for param in type_crs.argument_types()]
-            res = CFuncType(ret_objtype, arg_cobjtypes)
+            res = CFuncType(ret_objtype, arg_cproxytypes)
         elif type_crs.kind == TypeKind.ELABORATED:
             decl_cursor = type_crs.get_declaration()
             struct_name = decl_cursor.displayname
@@ -372,11 +372,11 @@ class CParser:
                 if not has_attr(sub_cursor, CursorKind.ANNOTATE_ATTR,
                                 self.INLINE_ATTR_TEXT) \
                         and not has_attr(sub_cursor, CursorKind.DLLIMPORT_ATTR):
-                    cobj_type = self.convert_type_from_cursor(sub_cursor.type)
+                    ctype = self.convert_type_from_cursor(sub_cursor.type)
                     if has_attr(sub_cursor, CursorKind.ANNOTATE_ATTR,
                                 self.CDECL_ATTR_TEXT):
-                        cobj_type = cobj_type.with_attr('__cdecl')
-                    self.funcs[sub_cursor.spelling] = cobj_type
+                        ctype = ctype.with_attr('__cdecl')
+                    self.funcs[sub_cursor.spelling] = ctype
                     if any(c.kind == CursorKind.COMPOUND_STMT
                            for c in sub_cursor.get_children()):
                         self.implementations.add(sub_cursor.spelling)
@@ -384,12 +384,12 @@ class CParser:
                     del self.funcs[sub_cursor.spelling]
             elif sub_cursor.kind == CursorKind.TYPEDEF_DECL:
                 typedef_cursor = sub_cursor.underlying_typedef_type
-                cobj_type = self.convert_type_from_cursor(typedef_cursor)
-                self.typedefs[sub_cursor.displayname] = cobj_type
+                ctype = self.convert_type_from_cursor(typedef_cursor)
+                self.typedefs[sub_cursor.displayname] = ctype
             elif sub_cursor.kind == CursorKind.VAR_DECL \
                     and sub_cursor.storage_class != StorageClass.STATIC:
-                cobj_type = self.convert_type_from_cursor(sub_cursor.type)
-                self.vars[sub_cursor.displayname] = cobj_type
+                ctype = self.convert_type_from_cursor(sub_cursor.type)
+                self.vars[sub_cursor.displayname] = ctype
                 if sub_cursor.storage_class == StorageClass.NONE:
                     self.implementations.add(sub_cursor.displayname)
             else:

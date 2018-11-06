@@ -1,9 +1,9 @@
 import ctypes as ct
-from .core import CObjType, CObj
+from .core import CProxyType, CProxy
 from .integer import CIntType
 
 
-class CVoidType(CObjType):
+class CVoidType(CProxyType):
 
     def __init__(self):
         super().__init__(None)
@@ -19,8 +19,8 @@ class CVoidType(CObjType):
         return result
 
 
-class CVoid(CObj):
+class CVoid(CProxy):
     pass
 
 
-CVoidType.COBJ_CLASS = CVoid
+CVoidType.CPROXY_CLASS = CVoid

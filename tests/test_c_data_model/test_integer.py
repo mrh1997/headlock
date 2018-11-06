@@ -62,20 +62,20 @@ class TestCInt:
         cint_obj.val = 1111
         assert cint_obj.val == 1111
 
-    def test_setVal_modifiesCObjInplace(self, cint_type):
+    def test_setVal_modifiesCProxyInplace(self, cint_type):
         cint_obj = cint_type(999)
         orig_adr = ct.addressof(cint_obj.ctypes_obj)
         cint_obj.val = 1111
         assert cint_obj.ctypes_obj.value == 1111
         assert ct.addressof(cint_obj.ctypes_obj) == orig_adr
 
-    def test_setVal_onCObj_writesValOfCObj(self, cint_type):
+    def test_setVal_onCProxy_writesValOfCProxy(self, cint_type):
         cint_obj = cint_type()
         cint_obj.val = cint_type(2)
         assert cint_obj.val == 2
 
     @pytest.mark.xfail
-    def test_setVal_onConstCObj_raisesWriteProtectError(self, cint_type):
+    def test_setVal_onConstCProxy_raisesWriteProtectError(self, cint_type):
         const_cint_obj = cint_type.with_attr('const')(3)
         with pytest.raises(cdm.WriteProtectError):
             const_cint_obj.val = 4
@@ -98,10 +98,10 @@ class TestCInt:
         assert cint_type(9) != 10
         assert 10 != cint_type(9)
 
-    def test_eq_onCObjOfSameValue_returnsTrue(self, cint_type):
+    def test_eq_onCProxyOfSameValue_returnsTrue(self, cint_type):
         assert cint_type(999) == cint_type(999)
 
-    def test_eq_onCObjOfDifferentValue_returnsFalse(self, cint_type):
+    def test_eq_onCProxyOfDifferentValue_returnsFalse(self, cint_type):
         assert cint_type(1000) != cint_type(999)
 
     def test_getMem_returnsBufferOfRawData(self, cint_type):
@@ -121,7 +121,7 @@ class TestCInt:
         cint_obj.mem = bytearray.fromhex("34 00 12 00")
         assert cint_obj.val == 0x120034
 
-    def test_setMem_onValueSmallerThanCObj_ok(self, cint_type):
+    def test_setMem_onValueSmallerThanCProxy_ok(self, cint_type):
         cint_obj = cint_type()
         cint_obj.mem = b'\x11'
         assert cint_obj.val == 0x00000011
@@ -151,7 +151,7 @@ class TestCInt:
         assert cint_obj.val == 4
         assert cint_obj2.val == 5
 
-    def test_add_onCObj_ok(self, cint_type):
+    def test_add_onCProxy_ok(self, cint_type):
         cint_obj = cint_type(4)
         cint_obj2 = cint_obj + cint_type(1)
         assert cint_obj.val == 4
@@ -176,7 +176,7 @@ class TestCInt:
         assert cint_obj.val == 4
         assert cint_obj2.val == 3
 
-    def test_sub_onCObj_ok(self, cint_type):
+    def test_sub_onCProxy_ok(self, cint_type):
         cint_obj = cint_type(4)
         cint_obj2 = cint_obj - cint_type(1)
         assert cint_obj.val == 4

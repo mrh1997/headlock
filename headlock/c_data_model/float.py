@@ -1,6 +1,6 @@
-from .core import CObjType, CObj
+from .core import CProxyType, CProxy
 
-class CFloatType(CObjType):
+class CFloatType(CProxyType):
     """This is a dummy yet"""
 
     def __init__(self, c_name, bits, ctypes_type):
@@ -9,8 +9,8 @@ class CFloatType(CObjType):
         self.c_name = c_name
 
 
-class CFloat(CObj):
+class CFloat(CProxy):
     """This is a dummy yet"""
     pass
 
-CFloatType.COBJ_CLASS = CFloat
+CFloatType.CPROXY_CLASS = CFloat

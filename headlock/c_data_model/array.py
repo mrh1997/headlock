@@ -1,5 +1,5 @@
 import ctypes as ct
-from .core import CObjType, CObj
+from .core import CProxyType, CProxy
 from .integer import CIntType
 
 
@@ -20,11 +20,11 @@ def map_unicode_to_list(val, base_type):
         return result + [0]
 
 
-class CArrayType(CObjType):
+class CArrayType(CProxyType):
 
     PRECEDENCE = 20
 
-    def __init__(self, base_type:CObjType, element_count:int, ctypes_type=None):
+    def __init__(self, base_type:CProxyType, element_count:int, ctypes_type=None):
         super().__init__(ctypes_type or base_type.ctypes_type * element_count)
         self.base_type = base_type
         self.element_count = element_count
@@ -60,18 +60,18 @@ class CArrayType(CObjType):
         yield self.base_type
 
 
-class CArray(CObj):
+class CArray(CProxy):
 
     @property
     def base_type(self):
-        return self.cobj_type.base_type
+        return self.ctype.base_type
 
     @property
     def element_count(self):
-        return self.cobj_type.element_count
+        return self.ctype.element_count
 
     def __len__(self):
-        return len(self.cobj_type)
+        return len(self.ctype)
 
     def __getitem__(self, ndx):
         def abs_ndx(rel_ndx, ext=0):
@@ -96,7 +96,7 @@ class CArray(CObj):
                            ext=1)
             part_array_type = self.base_type.array(stop - start)
             return part_array_type(
-                self.cobj_type.ctypes_type.from_address(adr(start)),
+                self.ctype.ctypes_type.from_address(adr(start)),
                 _depends_on_=self)
         else:
             return self.base_type(
@@ -152,4 +152,4 @@ class CArray(CObj):
     def __str__(self):
         return ''.join(chr(c) for c in self.val[0:self.element_count])
 
-CArrayType.COBJ_CLASS = CArray
+CArrayType.CPROXY_CLASS = CArray

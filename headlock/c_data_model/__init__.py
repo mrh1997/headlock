@@ -3,7 +3,7 @@ import ctypes as ct
 from . import void, integer, float, enum, array, pointer, struct, union, \
     vector, function, funcpointer
 from .memory_access import CMemory, WriteProtectError
-from .core import CObjType, CObj
+from .core import CProxyType, CProxy
 from .void import CVoid
 from .integer import CInt
 from .float import CFloat

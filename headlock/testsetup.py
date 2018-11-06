@@ -348,11 +348,11 @@ class TestSetup(BuildInDefs):
                      if name not in self.__implementations}
             def iter_in_dep_order(only_embedded_types=False):
                 processed = set()
-                def emb_struct_only(cobj_type, parent_cobj_type):
-                    return not (isinstance(cobj_type, CStructType)
-                                and isinstance(parent_cobj_type, CPointerType))
-                for cobj_type in mocks.values():
-                    sub_types = cobj_type.iter_subtypes(
+                def emb_struct_only(ctype, parent_ctype):
+                    return not (isinstance(ctype, CStructType)
+                                and isinstance(parent_ctype, CPointerType))
+                for ctype in mocks.values():
+                    sub_types = ctype.iter_subtypes(
                         top_level_last=True,
                         filter=emb_struct_only if only_embedded_types else None,
                         processed=processed)
@@ -399,16 +399,16 @@ class TestSetup(BuildInDefs):
                                               self.get_build_dir())
         self.__dll = ct.CDLL(os.fspath(exepath))
         try:
-            for name, cobj_type in self.__globals.items():
-                if isinstance(cobj_type, CFuncType):
+            for name, ctype in self.__globals.items():
+                if isinstance(ctype, CFuncType):
                     if name not in self.__implementations:
-                        self.__setup_mock_callback(name, cobj_type)
-                    cobj = cobj_type(getattr(self.__dll, name),
+                        self.__setup_mock_callback(name, ctype)
+                    cproxy = ctype(getattr(self.__dll, name),
                                      logger=self.__logger__())
                 else:
-                    ctypes_var = cobj_type.ctypes_type.in_dll(self.__dll, name)
-                    cobj = cobj_type.COBJ_CLASS(cobj_type, ctypes_var)
-                setattr(self, name, cobj)
+                    ctypes_var = ctype.ctypes_type.in_dll(self.__dll, name)
+                    cproxy = ctype.CPROXY_CLASS(ctype, ctypes_var)
+                setattr(self, name, cproxy)
         except:
             self.__unload__()
             raise
