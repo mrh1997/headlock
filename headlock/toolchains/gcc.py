@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 
-from ..testsetup import ToolChainDriver, BuildError
+from . import ToolChainDriver, BuildError
 
 
 BUILD_CACHE = set()

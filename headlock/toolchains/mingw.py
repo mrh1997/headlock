@@ -3,7 +3,7 @@ import winreg
 import itertools
 import fnmatch
 
-from ..testsetup import BuildError
+from . import BuildError
 from .gcc import GccToolChain
 
 
