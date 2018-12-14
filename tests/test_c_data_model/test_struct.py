@@ -51,12 +51,12 @@ class TestCStructType:
         cstruct_type()
         CPROXY_CLASS.assert_called_once_with(cstruct_type, {}, None)
 
-    def test_sizeof_onNoExplicitPacking_returnsSizeOfUnpackedStruct(self, cstruct_type, cint_type, cint16_type):
+    def test_sizeof_onNoExplicitPacking_returnsSizeOfUnpackedStruct(self, cuint64_type, cint16_type):
         unpacked_cstruct_type = cdm.CStructType(
             'unpacked_struct',
             [('m1', cint16_type),
-             ('m2', cint_type)])
-        assert unpacked_cstruct_type.sizeof == 2*cint_type.sizeof
+             ('m2', cuint64_type)])
+        assert unpacked_cstruct_type.sizeof == 2*cuint64_type.sizeof
 
     def test_sizeof_onPacking1_returnsSizeOfPackedStruct(self, cint_type, cint16_type):
         packed_struct = cdm.CStructType(

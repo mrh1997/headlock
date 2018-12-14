@@ -11,7 +11,7 @@ class CStructType(CProxyType):
         if not struct_name:
             struct_name = f'__anonymous_{CStructType.__NEXT_ANONYMOUS_ID__}__'
             CStructType.__NEXT_ANONYMOUS_ID__ += 1
-        self._packing_ = packing or 4
+        self._packing_ = packing or 8
         self._members_ = None
         self._members_order_ = None
         ctypes_type = type('ctypes_' + struct_name,
