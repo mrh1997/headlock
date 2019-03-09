@@ -1,16 +1,14 @@
-import ctypes as ct
+import collections.abc
 from .core import CProxyType, CProxy
-from .integer import CIntType
+from .pointer import CPointerType
+from ..address_space import AddressSpace
+
 
 
 class CVoidType(CProxyType):
 
-    def __init__(self):
-        super().__init__(None)
-
-    @property
-    def sizeof(self):
-        raise NotImplementedError('.sizeof does not work on void')
+    def __init__(self, addrspace:AddressSpace=None):
+        super().__init__(None, addrspace)
 
     def c_definition(self, refering_def=''):
         result = self._decorate_c_definition('void')

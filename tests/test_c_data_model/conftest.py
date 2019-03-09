@@ -1,24 +1,42 @@
 import ctypes as ct
-import sys
 import pytest
+import sys
 import headlock.c_data_model as cdm
+from headlock.address_space.virtual import VirtualAddressSpace
+from headlock.address_space.inprocess import InprocessAddressSpace
 
 
 @pytest.fixture
-def cint_type():
-    return cdm.CIntType('typename', 32, True, ct.c_int32)
+def addrspace():
+    return VirtualAddressSpace(b'abcdefgh')
 
 @pytest.fixture
-def cint16_type():
-    return cdm.CIntType('i16', 16, True, ct.c_int16)
+def unbound_cint_type():
+    return cdm.CIntType('cint', 32, True, cdm.ENDIANESS, None)
 
 @pytest.fixture
-def cuint64_type():
-    return cdm.CIntType('u64', 64, False, ct.c_uint64)
+def unbound_cint16_type(addrspace):
+    return cdm.CIntType('cint16', 16, True, cdm.ENDIANESS, None)
+
+@pytest.fixture
+def unbound_cuint64_type(addrspace):
+    return cdm.CIntType('cuint64', 64, False, cdm.ENDIANESS, None)
+
+@pytest.fixture
+def cint_type(addrspace):
+    return cdm.CIntType('cint', 32, True, cdm.ENDIANESS, addrspace)
+
+@pytest.fixture
+def cint16_type(addrspace):
+    return cdm.CIntType('cint16', 16, True, cdm.ENDIANESS, addrspace)
+
+@pytest.fixture
+def cuint64_type(addrspace):
+    return cdm.CIntType('cuint64', 64, False, cdm.ENDIANESS, addrspace)
 
 @pytest.fixture
 def cfunc_type():
-    return cdm.CFuncType()
+    return cdm.CFuncType(addrspace=InprocessAddressSpace([]))
 
 @pytest.fixture
 def cfunc_obj(cfunc_type):
@@ -28,8 +46,9 @@ def cfunc_obj(cfunc_type):
 def libc():
     return ct.cdll.msvcrt if sys.platform == 'win32' else ct.CDLL('libc.so.6')
 
-
 @pytest.fixture
-def abs_cfunc_obj(cint_type, libc):
-    abs_cfunc_type = cdm.CFuncType(cint_type, [cint_type])
-    return abs_cfunc_type(libc.abs)
+def abs_cfunc_obj(cint_type, libc, unbound_cint_type):
+    addrspace = InprocessAddressSpace([libc])
+    cint_type = unbound_cint_type.bind(addrspace)
+    abs_cfunc_type = cdm.CFuncType(cint_type, [cint_type], addrspace=addrspace)
+    return abs_cfunc_type("abs")

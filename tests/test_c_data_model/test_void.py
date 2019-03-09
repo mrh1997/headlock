@@ -1,5 +1,4 @@
 import pytest
-import ctypes as ct
 
 import headlock.c_data_model as cdm
 
@@ -10,19 +9,11 @@ class TestCVoidType:
         const_void = cdm.CVoidType().with_attr('const')
         assert const_void.c_definition('x') == 'const void x'
 
-    def test_getMem_returnsCRawAccessWithMaxSizeNone(self):
-        buf = ct.create_string_buffer(10)
-        cvoidptr_obj = cdm.CVoidType().ptr(ct.addressof(buf))
-        assert cvoidptr_obj.ref.mem.max_size is None
-        assert cvoidptr_obj.ref.mem.addr == ct.addressof(buf)
-
-    def test_allocPtr_allocatesBytewise(self):
-        cvoidptr_obj = cdm.CVoidType().alloc_ptr([1, 2, 3])
-        assert cvoidptr_obj.ref.mem == [1, 2, 3]
-
-    def test_ptr_onIterable_allocatesBlockBytewise(self):
-        void_ptr = cdm.CVoidType().ptr([1, 2, 3])
-        assert void_ptr.ref.mem == [1, 2, 3]
+    def test_getMem_returnsCRawAccessWithMaxSizeNone(self, addrspace):
+        cvoid_type = cdm.CVoidType(addrspace)
+        cvoid_obj = cdm.void.CVoid(cvoid_type, 123)
+        assert cvoid_obj.mem.max_address is None
+        assert cvoid_obj.mem.address == 123
 
     def test_eq_onVoid_returnsTrue(self):
         assert cdm.CVoidType() == cdm.CVoidType()

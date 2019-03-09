@@ -1,6 +1,7 @@
-import ctypes as ct
-from .core import CProxyType, CProxy
+from .core import CProxyType, CProxy, InvalidAddressSpaceError
 from .integer import CIntType
+from ..address_space import AddressSpace
+from collections.abc import Iterable
 
 
 def map_unicode_to_list(val, base_type):
@@ -8,7 +9,7 @@ def map_unicode_to_list(val, base_type):
         raise TypeError('Python Strings can only be assigned to '
                         'arrays/pointers of scalars')
     else:
-        elem_bits = min(base_type.bits, 32)
+        elem_bits = min(base_type.sizeof*8, 32)
         enc_val = val.encode(f'utf{elem_bits}')
         if elem_bits == 8:
             result = list(enc_val)
@@ -24,10 +25,19 @@ class CArrayType(CProxyType):
 
     PRECEDENCE = 20
 
-    def __init__(self, base_type:CProxyType, element_count:int, ctypes_type=None):
-        super().__init__(ctypes_type or base_type.ctypes_type * element_count)
+    def __init__(self, base_type:CProxyType, element_count:int,
+                 addrspace:AddressSpace=None):
+        if base_type.__addrspace__ is not addrspace:
+            raise InvalidAddressSpaceError('Addressspace of self and base_type '
+                                           'of pointer has to be identical')
+        super().__init__(base_type.sizeof * element_count, addrspace)
         self.base_type = base_type
         self.element_count = element_count
+
+    def bind(self, addrspace:AddressSpace):
+        bound_ctype = super().bind(addrspace)
+        bound_ctype.base_type = self.base_type.bind(addrspace)
+        return bound_ctype
 
     def shallow_eq(self, other):
         return super().shallow_eq(other) \
@@ -35,12 +45,8 @@ class CArrayType(CProxyType):
 
     def __repr__(self):
         return '_'.join([repr(self.base_type)]
-                        + sorted(self.c_attributes)
+                        + sorted(self.__c_attribs__)
                         + [f'array{self.element_count}'])
-
-    @property
-    def sizeof(cls):
-        return cls.base_type.sizeof * cls.element_count
 
     @property
     def null_val(cls):
@@ -58,6 +64,31 @@ class CArrayType(CProxyType):
 
     def shallow_iter_subtypes(self):
         yield self.base_type
+        
+    def convert_to_c_repr(self, py_val):
+        try:
+            return super().convert_to_c_repr(py_val)
+        except NotImplementedError:
+            if isinstance(py_val, Iterable):
+                payload = b''.join(map(self.base_type.convert_to_c_repr,py_val))
+                return payload + (b'\x00' * (self.sizeof - len(payload)))
+            else:
+                raise
+
+    def convert_from_c_repr(self, c_repr):
+        if not len(c_repr) <= self.sizeof:
+            raise ValueError('c_repr is too long')
+        if len(c_repr) % self.base_type.sizeof != 0:
+            raise ValueError('c_repr is not multiple of size of basetype')
+        element_size = self.base_type.sizeof
+        py_repr = [
+            self.base_type.convert_from_c_repr(c_repr[pos:pos + element_size])
+            for pos in range(0, len(c_repr), element_size)]
+        return py_repr + ([0] * (self.element_count - len(py_repr)))
+
+    @property
+    def alignment(self):
+        return self.base_type.alignment
 
 
 class CArray(CProxy):
@@ -83,10 +114,6 @@ class CArray(CProxy):
                 raise ValueError(f'ndx has to be between 0 and '
                                  f'{self.element_count} (but is {rel_ndx})')
 
-        def adr(abs_ndx):
-            return ct.addressof(self.ctypes_obj) + \
-                   abs_ndx * self.sizeof // self.element_count
-
         if isinstance(ndx, slice):
             if ndx.step is not None:
                 raise ValueError('Steps are not supported in slices of CArrays')
@@ -95,13 +122,11 @@ class CArray(CProxy):
                            else self.element_count,
                            ext=1)
             part_array_type = self.base_type.array(stop - start)
-            return part_array_type(
-                self.ctype.ctypes_type.from_address(adr(start)),
-                _depends_on_=self)
+            return CArray(part_array_type,
+                          self.__address__ + start*self.base_type.sizeof)
         else:
-            return self.base_type(
-                self.base_type.ctypes_type.from_address(adr(abs_ndx(ndx))),
-                _depends_on_=self)
+            adr = self.__address__ + abs_ndx(ndx) * self.base_type.sizeof
+            return self.base_type.create_cproxy_for(adr)
 
     @classmethod
     def _get_len(cls):
@@ -150,6 +175,6 @@ class CArray(CProxy):
         return self[0].adr + other
 
     def __str__(self):
-        return ''.join(chr(c) for c in self.val[0:self.element_count])
+        return ''.join(chr(el.val) for el in self[0:self.element_count])
 
 CArrayType.CPROXY_CLASS = CArray

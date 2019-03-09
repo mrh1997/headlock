@@ -8,7 +8,7 @@ import pytest
 from .helpers import build_tree
 from headlock.testsetup import TestSetup, MethodNotMockedError, \
     BuildError, CompileError, CModuleDecoratorBase, CModule, TransUnit
-from headlock.c_data_model import CStructType, CEnumType, CIntType
+import headlock.c_data_model as cdm
 
 
 @pytest.fixture
@@ -179,6 +179,10 @@ class TestCModule:
 
 
 class TestTestSetup(object):
+    """
+    This is an integration test, that tests the testsetup class and the
+    collaboration of the headlock components
+    """
 
     def extend_by_ccode(self, cls, src, filename, **macros):
         sourcefile = (Path(__file__).parent / 'c_files' / filename).resolve()
@@ -402,11 +406,23 @@ class TestTestSetup(object):
             ts.__exit__(None, None, None)
             ts.__unload__.assert_called_once()
 
+    def test_funcWrapper_onNotInstantiatedTestSetup_returnsCProxyType(self):
+        TSMock = self.cls_from_ccode(b'int func(int a, int b) { return a+b; }',
+                                     'func_not_inst.c')
+        assert isinstance(TSMock.func, cdm.CFuncType)
+        assert isinstance(TSMock.func.returns, cdm.CIntType)
+
     def test_funcWrapper_ok(self):
         TSMock = self.cls_from_ccode(b'int func(int a, int b) { return a+b; }',
                                      'func.c')
         with TSMock() as ts:
             assert ts.func(11, 22) == 33
+
+    def test_varWrapper_onNotInstantiatedTestSetup_returnsCProxyType(self):
+        TSMock = self.cls_from_ccode(b'short var = 1;',
+                                     'var_not_inst.c')
+        assert isinstance(TSMock.var, cdm.CIntType)
+        assert TSMock.var.sizeof == 2
 
     def test_varWrapper_ok(self):
         TSMock = self.cls_from_ccode(b'int var = 11;', 'var.c')
@@ -494,10 +510,15 @@ class TestTestSetup(object):
         with TSMock() as ts:
             assert ts.td_t == ts.int
 
+    def test_typedefWrapper_instanciate_ok(self):
+        TSMock = self.cls_from_ccode(b'typedef int i;', 'instaniate_typedef.c')
+        with TSMock() as ts:
+            assert ts.i(33) == 33
+
     def test_structWrapper_storesStructDefInStructCls(self):
         TSMock = self.cls_from_ccode(b'struct strct_t { };', 'struct.c')
         with TSMock() as ts:
-            assert isinstance(ts.struct.strct_t, CStructType)
+            assert isinstance(ts.struct.strct_t, cdm.CStructType)
 
     def test_structWrapper_onContainedStruct_ensuresContainedStructDeclaredFirst(self):
         TSMock = self.cls_from_ccode(
@@ -533,7 +554,7 @@ class TestTestSetup(object):
         TSMock = self.cls_from_ccode(b'struct { int a; } var;',
                                      'anonymous_structs_var.c')
         with TSMock() as ts:
-            assert [ts.var.ctype] == list(ts.struct.__dict__.values())
+            assert isinstance(ts.var.ctype, cdm.CStructType)
 
     def test_structWrapper_onTypedefFromAnonymousStruct_renamesStructToMakeItUsableAsParameter(self):
         TSMock = self.cls_from_ccode(b'typedef struct { int a; } t;\n'
@@ -543,10 +564,16 @@ class TestTestSetup(object):
             anon_cstruct_type = getattr(ts.struct, '__anonymousfromtypedef__t')
             assert not anon_cstruct_type.is_anonymous_struct()
 
+    def test_structWrapper_onInstanciate_bindsAddrSpace(self):
+        TSMock = self.cls_from_ccode(b'struct s_t { int a; };',
+                                     'instanciated_struct.c')
+        with TSMock() as ts:
+            assert ts.struct.s_t(44) == dict(a=44)
+
     def test_enumWrapper_storesEnumDefInEnumCls(self):
         TSMock = self.cls_from_ccode(b'enum enum_t { a };', 'enum.c')
         with TSMock() as ts:
-            assert isinstance(ts.enum.enum_t, CEnumType)
+            assert isinstance(ts.enum.enum_t, cdm.CEnumType)
 
     def test_onTestSetupComposedOfDifferentCModules_parseAndCompileCModulesIndependently(self):
         class TSDummy(TestSetup): pass
@@ -621,7 +648,7 @@ class TestTestSetup(object):
                                       b'int __cdecl cdecl_func(void);',
                                       'attr_annotation_support.c')
         with TSDummy() as ts:
-            assert '__cdecl' in ts.cdecl_func.ctype.c_attributes
+            assert '__cdecl' in ts.cdecl_func.ctype.__c_attribs__
 
     def test_subclassing_addsAttributesToDerivedClassButDoesNotModifyParentClass(self):
         TSDummy = self.cls_from_ccode(b'int func(void);\n'

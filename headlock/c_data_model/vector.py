@@ -1,6 +1,4 @@
-import ctypes as ct
 from .integer import CIntType, CInt
-
 
 
 class CVectorType(CIntType):
@@ -9,6 +7,6 @@ class CVectorType(CIntType):
     name = 'vector'
 
     def __init__(self, name=None):
-        super().__init__(name or '', 32, False, ct.c_int)
+        super().__init__(name or '', 32, False, 'little')
 
 CVector = CInt

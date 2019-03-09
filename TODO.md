@@ -9,9 +9,16 @@ Interface changing
    - All methods of the proxies are forwarded to the C type specific
      type object.
    - the type object is "bound" to a "environment"
+ * refactor PtrArrFactoryMixIn into factory object
+ * .sizeof and .offsetof() shall be available at runtime only and
+   done by the compiler (seems to be compiler dependent)
 
 Small (can be done by occassion)
 --------------------------------
+* Add multi-threading support to exception forwarding
+* Replace .base_type by .ref_type (ptr) and .element_type (array)
+* add "ts.unsigned" and "ts.signed" (to support casts like "((unsigned) (x))")
+* divide test_testsetup.py into unittests and integration test
 * globale (nicht CModule) spezifische settings (preprocessor defines
   sowie compilersettings wie z.B. toolchain selection) in TestSetup
 * provide method for non-CObjs to cast itself to a corresponding CObj.
@@ -31,9 +38,11 @@ Small (can be done by occassion)
 * Replace _global_refs_ dictionary by option during creation of object.
   When settings this option the element is not freed until destruction
   of testsetup
-* whitelisting for objects from system headers which shall not be skipped
-  (to allow them to be used in a playground). the whitelist has to be
-  specified through testsetup
+* whitelisting for objects from system headers which shall not be skipped.
+  The whitelist has to be specified through testsetup.
+  The whitelisted object can be used:
+  * for usage from playground
+  * for mocking in unittests
 * "const int * array" cannot be used in function parameter
    ("WriteProtectedError" is raised)
 * not parsable macros shall be overwritable: "class TS(TestSetup): MACRO = 9"
@@ -64,7 +73,26 @@ Small (can be done by occassion)
   Furthermore a new context could be introdced for "temporary references".
   All references created while the context are released after the context.
   Maybe use functionname instead of __rmatmul__ for clarity?!?
-
+* When comparing a CProxy with a python object currently the CProxy's
+  val is compared to the python object. Ideally the python object is
+  casted to the corresponding CProxy and then both val's are compared.
+  Sample use case: "ts.structX == (1, 2)"
+* arrays should be special case of pointers (subclass). This also means
+  they get more compatible (i.e. when doing carray.val by default a
+  pointer should be returned). By getting a special property ".list"
+  their content can be retrieved like it is currently the case.
+  Attention: "ts.array == [1,2,3]" should still work (see above entry)
+* declaring a function as static in advance and omitting "static" in
+  its later implementation does not work.
+* rename .ptr to .def_ptr and .array() to .def_array().
+  Then remove .alloc_ptr() and rename .alloc_array() to .array
+  (i.e. ts.uint8_t.array(b'test')). alloc_ptr() is done implicitly when
+  passing the array to a pointer or can be done explicitly by
+  .array(...).adr
+  Maybe even rename .ref to .ptr then?!?
+* introduce define, that can be used to check if headlock is active
+* ptrtype.base_type is not intuitive. Maybe ptrtype.ref would be better?
+  or at least sth like ".pointee"
 
 
 Medium

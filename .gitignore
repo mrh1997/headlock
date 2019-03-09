@@ -1,5 +1,6 @@
 # project specific
-/tests/c_files
+/tests/c_files/
+/tests/test_address_space/dummy_clibs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

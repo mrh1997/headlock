@@ -5,14 +5,15 @@ import sys
 import weakref
 import abc
 import hashlib
-import copy
 import platform
 from typing import List, Iterator, Dict, Any, Tuple, Union
 
 from pathlib import Path
 
 from .c_data_model import BuildInDefs, CStructType, CEnumType, CFuncType, \
-    CPointerType
+    CPointerType, CProxyType
+from .address_space import AddressSpace
+from .address_space.inprocess import InprocessAddressSpace
 from .c_parser import CParser, ParseError
 from .toolchains import ToolChainDriver, BuildError, TransUnit
 
@@ -32,8 +33,29 @@ class MethodNotMockedError(Exception):
     pass
 
 
-class CustomTypeContainer:
-    pass
+class GlobalCProxyDescriptor:
+    """
+    This internal class provides descriptors for global CProxy objects.
+    If the testsetup is instantiated, they return a CProxy object.
+    Otherwise they return the corresponding CProxyType
+    """
+
+    def __init__(self, name:str, ctype:CProxyType):
+        self.name = name
+        self.ctype = ctype
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self.ctype
+        else:
+            addrspace = instance.__addrspace__
+            sym_adr = addrspace.get_symbol_adr(self.name)
+            return self.ctype.bind(addrspace).create_cproxy_for(sym_adr)
+
+
+class StructUnionEnumCTypeCollection:
+    def __init__(self, addrspace:AddressSpace):
+        self.__addrspace__ = addrspace
 
 
 class CModuleDecoratorBase:
@@ -134,8 +156,9 @@ else:
 
 class TestSetup(BuildInDefs):
 
-    struct = CustomTypeContainer()
-    enum = CustomTypeContainer()
+    class struct(StructUnionEnumCTypeCollection): pass
+    union = struct
+    enum = struct
 
     _BUILD_DIR_ = '.headlock'
 
@@ -164,15 +187,15 @@ class TestSetup(BuildInDefs):
         cls.__ts_name__ = None
         cls.__globals = bases[0].__globals.copy()
         cls.__implementations = bases[0].__implementations.copy()
-        cls.struct = copy.copy(bases[0].struct)
+        cls.struct = type(cls.__name__ + '_struct',
+                          tuple(base.struct for base in bases),
+                          {})
         cls.union = cls.struct
-        cls.enum = copy.copy(bases[0].enum)
+        cls.enum = cls.struct
         cls.__transunits__ = bases[0].__transunits__
         for base in reversed(bases[1:]):
             cls.__globals.update(base.__globals)
             cls.__implementations.update(base.__implementations)
-            cls.struct.__dict__.update(base.struct.__dict__)
-            cls.enum.__dict__.update(base.enum.__dict__)
             cls.__transunits__ |= base.__transunits__
 
     @classmethod
@@ -226,6 +249,12 @@ class TestSetup(BuildInDefs):
             cls.__globals.update(parser.vars)
             cls.__implementations |= parser.implementations
 
+            for name, ctype in parser.funcs.items():
+                descr = GlobalCProxyDescriptor(name, ctype)
+                setattr(cls, name, descr)
+            for name, ctype in parser.vars.items():
+                descr = GlobalCProxyDescriptor(name, ctype)
+                setattr(cls, name, descr)
             for name, typedef in parser.typedefs.items():
                 if isinstance(typedef, CStructType) \
                     and typedef.is_anonymous_struct():
@@ -260,7 +289,7 @@ class TestSetup(BuildInDefs):
         super(TestSetup, self).__init__()
         self.__unload_events = []
         self._global_refs_ = {}
-        self.__dll = None
+        self.__addrspace__:AddressSpace = None
         self.__started = False
         if self._delayed_exc:
             raise self._delayed_exc
@@ -330,18 +359,16 @@ class TestSetup(BuildInDefs):
     def __load__(self):
         exepath = self.__TOOLCHAIN__.exe_path(self.get_ts_name(),
                                               self.get_build_dir())
-        self.__dll = ct.CDLL(os.fspath(exepath))
+        cdll = ct.CDLL(os.fspath(exepath))
+        self.__addrspace__ = InprocessAddressSpace([cdll])
+        self.struct = self.struct(self.__addrspace__)
+        self.union = self.struct
+        self.enum = self.struct
         try:
             for name, ctype in self.__globals.items():
-                if isinstance(ctype, CFuncType):
-                    if name not in self.__implementations:
-                        self.__setup_mock_callback(name, ctype)
-                    cproxy = ctype(getattr(self.__dll, name),
-                                     logger=self.__logger__())
-                else:
-                    ctypes_var = ctype.ctypes_type.in_dll(self.__dll, name)
-                    cproxy = ctype.CPROXY_CLASS(ctype, ctypes_var)
-                setattr(self, name, cproxy)
+                if isinstance(ctype, CFuncType) \
+                    and name not in self.__implementations:
+                    self.__setup_mock_callback(name, ctype.bind(self.__addrspace__))
         except:
             self.__unload__()
             raise
@@ -360,28 +387,22 @@ class TestSetup(BuildInDefs):
                 return pymock(*args)
         callback_wrapper.__name__ = name
 
-        callback_func = cfunc_type(callback_wrapper, logger=self.__logger__())
-
-        callback_ptr = ct.c_void_p.in_dll(self.__dll, name + '_mock')
-        callback_ptr.value = callback_func.adr.val
-
-        # ensure that callback closure is not garbage collected:
-        self._global_refs_[name + '_mock'] = callback_func
+        mock_ptr_adr = self.__addrspace__.get_symbol_adr(name + '_mock')
+        mock_ptr = cfunc_type.ptr.create_cproxy_for(mock_ptr_adr)
+        mock_ptr.val = cfunc_type(callback_wrapper).val
 
     def __shutdown__(self):
         self.__started = False
 
     def __unload__(self):
-        if self.__dll:
+        if self.__addrspace__:
             if self.__started:
                 self.__shutdown__()
             for event, args in reversed(self.__unload_events):
                 event(*args)
-            for name in self.__globals:
-                delattr(self, name)
             self._global_refs = dict()
-            unload_library_func(self.__dll._handle)
-            self.__dll = None
+            unload_library_func(self.__addrspace__.cdll._handle)
+            self.__addrspace__ = None
 
     def __enter__(self):
         if not self.__started:
