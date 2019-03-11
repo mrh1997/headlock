@@ -194,6 +194,13 @@ class CFuncType(CProxyType):
             adr = init_val
         return self.create_cproxy_for(adr)
 
+    @property
+    def sig_id(self):
+        """
+        returns unique identification string for this function signature
+        """
+        return self.c_definition('f')
+
 
 class CFunc(CProxy):
 
@@ -218,20 +225,15 @@ class CFunc(CProxy):
         if len(args) != len(self.ctype.args):
             raise TypeError(f'{self.name}() requires {len(self.ctype.args)} '
                             f'parameters, but got {len(args)}')
-        ct_func_type = map_to_ct(self.ctype)
-        ct_func_obj = ct_func_type(self.__address__)
-        ct_args = []
-        ptr_size_int = ct.c_uint64 if ct.sizeof(ct.c_void_p)==8 else ct.c_uint32
-        casted_args = [carg_type(arg)
-                       for carg_type, arg in zip(self.ctype.args, args)]
-        for arg_cobj, arg_ctype in zip(casted_args, self.ctype.args):
-            ct_argptr_type = ct.POINTER(map_to_ct(arg_ctype))
-            ct_adr_int = ptr_size_int(arg_cobj.__address__)
-            ct_argptr_obj = ct.cast(ct.pointer(ct_adr_int),
-                                    ct.POINTER(ct_argptr_type)).contents
-            ct_args.append(ct_argptr_obj.contents)
-        result = ct_func_obj(*ct_args)
+        addrspace = self.ctype.__addrspace__
         return_ctype = self.ctype.returns
+        params_bytes = b''.join(carg_type.convert_to_c_repr(arg)
+                          for carg_type, arg in zip(self.ctype.args, args))
+        params_bufadr = addrspace.alloc_memory(len(params_bytes))
+        addrspace.write_memory(params_bufadr, params_bytes)
+        retval = return_ctype()
+        addrspace.invoke_c_code(self.ctype.sig_id, self.__address__,
+                                params_bufadr, retval.__address__)
         if last_tunnelled_exception is not None:
             exc = last_tunnelled_exception
             last_tunnelled_exception = None
@@ -239,13 +241,7 @@ class CFunc(CProxy):
         elif return_ctype is None:
             return
         else:
-            if isinstance(result, (int, float, str, bytes, bool)):
-                returns_cobj = return_ctype(result)
-            else:
-                cproxy_class = return_ctype.CPROXY_CLASS
-                returns_cobj = cproxy_class(return_ctype, ct.addressof(result))
-                returns_cobj = returns_cobj.copy()
-            return returns_cobj
+            return retval
 
     def __repr__(self):
         return f"<CFunc of {self.name or '???'!r}>"

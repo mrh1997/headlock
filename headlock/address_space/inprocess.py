@@ -13,12 +13,13 @@ class InprocessAddressSpace(AddressSpace):
     current python interpreter and uses ctypes for accessing it.
     """
 
-    def __init__(self, cdlls:List[ct.CDLL]):
+    def __init__(self, cdlls:List[ct.CDLL], py2c_bridge_ndxs=None):
         super().__init__()
         self.__cdlls = cdlls
         self.__mempool = {}
         self.bridgepool = {}
         self.__symbol_map = {}
+        self.py2c_bridge_ndxs = py2c_bridge_ndxs or {}
 
     def read_memory(self, address, length):
         return ct.string_at(address, length)
@@ -57,6 +58,18 @@ class InprocessAddressSpace(AddressSpace):
             return self.__symbol_map[adr]
         except KeyError:
             raise ValueError('no known symbol at address')
+
+    def invoke_c_code(self, sig_id:str, func_adr:int,
+                      args_adr:int, retval_adr:int):
+        try:
+            bridge_ndx = self.py2c_bridge_ndxs[sig_id]
+        except (AttributeError, KeyError):
+            raise ValueError(f'No Bridge for signature {sig_id!r} found')
+        else:
+            if not self.cdll._py2c_bridge_(bridge_ndx, func_adr,
+                                           args_adr, retval_adr):
+                raise ValueError('Internal Error '
+                                 '(bridge index map does not match binary)')
 
     @property
     def cdll(self):

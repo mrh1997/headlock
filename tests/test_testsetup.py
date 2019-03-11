@@ -413,10 +413,32 @@ class TestTestSetup(object):
         assert isinstance(TSMock.func.returns, cdm.CIntType)
 
     def test_funcWrapper_ok(self):
-        TSMock = self.cls_from_ccode(b'int func(int a, int b) { return a+b; }',
-                                     'func.c')
+        TSMock = self.cls_from_ccode(
+            b'short func(char a, int *b) { return a + *b; }', 'func.c')
         with TSMock() as ts:
-            assert ts.func(11, 22) == 33
+            assert ts.func(11, ts.int(22).adr) == 33
+
+    def test_funcWrapper_onMultipleUniqueSignatures_ok(self):
+        TSMock = self.cls_from_ccode(
+            b'int func1(int a) { return 11; }'
+            b'int func2(int a, int b) { return 22; }'
+            b'int func3(int a, int b, int c) { return 33; }'
+            b'int func4(int a, int b, int c, int d) { return 44; }',
+            'func.c')
+        with TSMock() as ts:
+            assert ts.func1(0) == 11
+            assert ts.func2(0, 0) == 22
+            assert ts.func3(0, 0, 0) == 33
+            assert ts.func4(0, 0, 0, 0) == 44
+
+    def test_funcWrapper_onMultipleIdenticalSignatures_ok(self):
+        TSMock = self.cls_from_ccode(
+            b'int func1(int a) { return 11; }'
+            b'int func2(int a) { return 22; }',
+            'func.c')
+        with TSMock() as ts:
+            assert ts.func1(0) == 11
+            assert ts.func2(0) == 22
 
     def test_varWrapper_onNotInstantiatedTestSetup_returnsCProxyType(self):
         TSMock = self.cls_from_ccode(b'short var = 1;',

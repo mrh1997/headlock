@@ -77,3 +77,11 @@ class AddressSpace:
         returns the name of a symbol or raises ValueError is adr does not
         refer to a valid C symbol
         """
+
+    @abc.abstractmethod
+    def invoke_c_code(self, func_adr:int, sig_id:str,
+                      args_adr:int, retval_adr:int) -> bytes:
+        """
+        invokes a piece of C code via the bridge for signature of name
+        "sig_id".
+        """

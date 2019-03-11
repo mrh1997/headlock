@@ -290,6 +290,7 @@ class TestSetup(BuildInDefs):
         self.__unload_events = []
         self._global_refs_ = {}
         self.__addrspace__:AddressSpace = None
+        self.__py2c_bridge_ndxs = {}
         self.__started = False
         if self._delayed_exc:
             raise self._delayed_exc
@@ -303,10 +304,12 @@ class TestSetup(BuildInDefs):
     def __build__(self):
         if not self.get_build_dir().exists():
             self.get_build_dir().mkdir(parents=True)
+        self.__py2c_bridge_ndxs = {}
         mock_proxy_path = self.get_build_dir() / '__headlock_bridge__.c'
         write_bridge_code(mock_proxy_path.open('wt'),
                           self.__globals,
-                          self.__implementations)
+                          self.__implementations,
+                          self.__py2c_bridge_ndxs)
         mock_tu = TransUnit('mocks', mock_proxy_path, [], {})
         self.__TOOLCHAIN__.build(self.get_ts_name(),
                                  self.get_build_dir(),
@@ -318,7 +321,8 @@ class TestSetup(BuildInDefs):
         exepath = self.__TOOLCHAIN__.exe_path(self.get_ts_name(),
                                               self.get_build_dir())
         cdll = ct.CDLL(os.fspath(exepath))
-        self.__addrspace__ = InprocessAddressSpace([cdll])
+        self.__addrspace__ = InprocessAddressSpace([cdll],
+                                                   self.__py2c_bridge_ndxs)
         self.struct = self.struct(self.__addrspace__)
         self.union = self.struct
         self.enum = self.struct

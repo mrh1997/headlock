@@ -234,6 +234,9 @@ class TestCFuncType:
         cfunc_type2(cfunc_obj)
         CPROXY_CLASS.assert_called_once_with(cfunc_type2, 123)
 
+    def test_sigId_isCDefinitionWithReferrerF(self, cfunc_type):
+        assert cfunc_type.sig_id == cfunc_type.c_definition('f')
+
 
 class TestCFunc:
 
