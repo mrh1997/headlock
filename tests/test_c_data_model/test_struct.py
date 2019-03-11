@@ -134,12 +134,12 @@ class TestCStructType:
         assert unbound_cstruct_type.null_val == \
                {'member_int':0, 'member_short':0, 'member_int2':0}
 
-    def test_delayedDef_setsMembers(self, cint_type, cint16_type):
+    def test_delayedDef_setsMembers(self, unbound_cint_type, unbound_cint16_type):
         cstruct_type = cdm.CStructType('strct')
-        cstruct_type.delayed_def([('member1',cint_type),
-                                  ('member2',cint16_type)])
-        assert cstruct_type.member1 is cint_type
-        assert cstruct_type.member2 is cint16_type
+        cstruct_type.delayed_def([('member1', unbound_cint_type),
+                                  ('member2', unbound_cint16_type)])
+        assert cstruct_type.member1 is unbound_cint_type
+        assert cstruct_type.member2 is unbound_cint16_type
 
     def test_delayedDef_onRecursiveStruct_ok(self, addrspace):
         recur_cstruct_type = cdm.CStructType('strct', addrspace=addrspace)

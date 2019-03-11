@@ -6,6 +6,9 @@ from typing import List, Tuple, Union, Dict
 from collections.abc import Sequence
 
 
+MembersDefinition = Union[Dict[str, CProxyType], List[Tuple[str,CProxyType]]]
+
+
 class CStructType(Sequence, CProxyType):
 
     __NEXT_ANONYMOUS_ID__ = 1
@@ -14,13 +17,9 @@ class CStructType(Sequence, CProxyType):
     _members_order_:List[str] = []
 
     def __init__(self, struct_name:str,
-                 members:List[Tuple[str, CProxyType]]=None,
+                 members:MembersDefinition=None,
                  packing:int=None, addrspace:AddressSpace=None):
         super().__init__(-1, addrspace)
-        if members is not None \
-            and any(m.__addrspace__ is not addrspace for nm, m in members):
-            raise InvalidAddressSpaceError('members must have same address '
-                                           'space then struct')
         if not struct_name:
             struct_name = f'__anonymous_{CStructType.__NEXT_ANONYMOUS_ID__}__'
             CStructType.__NEXT_ANONYMOUS_ID__ += 1
@@ -50,7 +49,13 @@ class CStructType(Sequence, CProxyType):
         except KeyError as e:
             raise AttributeError(f'struct has no attribute named {item!r}')
 
-    def delayed_def(self, member_types):
+    def delayed_def(self, member_types:MembersDefinition):
+        if isinstance(member_types, dict):
+            member_types = member_types.items()
+        if any(m.__addrspace__ is not self.__addrspace__
+               for nm, m in member_types):
+            raise InvalidAddressSpaceError('members must have same address '
+                                           'space then struct')
         self._members_ = dict(member_types)
         self._members_order_ = [nm for nm, tp in member_types]
         next_offset = 0
