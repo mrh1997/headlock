@@ -1,7 +1,7 @@
 """
 This is for headlock internal use only!
 """
-from typing import Dict, Tuple
+from typing import Tuple, Callable
 import abc
 from collections.abc import ByteString
 
@@ -18,7 +18,7 @@ class AddressSpace:
     layer.
 
     This class is only the abstract base class. Descendants have to implement
-    the communication between this python process/machine and some spefic
+    the communication between this python process/machine and some specific
     kind of "running code" (i.e. an OS user process, an OS kernel or an
     embedded system running on a remote machine).
 
@@ -27,8 +27,8 @@ class AddressSpace:
     passed to the constructor of the subclass.
     """
 
-    def __int__(self):
-        self.__mempool__ = {}
+    def __init__(self):
+        self.bridgepool = {}
 
     def _register_memory_block(self, address, len):
         pass
@@ -84,4 +84,18 @@ class AddressSpace:
         """
         invokes a piece of C code via the bridge for signature of name
         "sig_id".
+        """
+
+    @abc.abstractmethod
+    def create_c_code(self, sig_id:str,
+                      pyfunc:Callable[[int, int], None]) -> int:
+        """
+        Creates a new C function if signature 'sig_id'. Everytime this function
+        is called, the call is bridged and forwarded to pyfunc.
+        """
+
+    @abc.abstractmethod
+    def close(self):
+        """
+        Close the connection to the addressspace.
         """

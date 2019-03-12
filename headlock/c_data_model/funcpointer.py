@@ -1,11 +1,11 @@
 from .pointer import CPointerType, CPointer
-#from .function import CFuncType
+from .function import CFuncType
 from ..address_space import AddressSpace
 
 
 class CFuncPointerType(CPointerType):
 
-    def __init__(self, base_type:'CFuncType', bitsize:int, endianess:str,
+    def __init__(self, base_type:CFuncType, bitsize:int, endianess:str,
                  addrspace:AddressSpace=None):
         # if not isinstance(base_type, CFuncType):
         #     raise TypeError('Expect CFuncPointerType refer to CFuncType')

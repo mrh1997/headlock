@@ -1,72 +1,11 @@
 import sys
-import ctypes as ct
 from .core import CProxyType, CProxy, InvalidAddressSpaceError
 from .void import CVoidType
 from ..address_space import AddressSpace
-from ..address_space.inprocess import InprocessAddressSpace, \
-    ENDIANESS, MACHINE_WORDSIZE
 from typing import Union
 
 
 last_tunnelled_exception = None
-
-
-CTypePointer = type(ct.POINTER(ct.c_int))
-CTypePyFuncPointer = type(ct.CFUNCTYPE(None))
-
-def issubclass_ctypes_ptr(cls):
-    return cls == ct.c_char_p or cls == ct.c_wchar_p or \
-           isinstance(cls, CTypePointer) or isinstance(cls, CTypePyFuncPointer)
-
-
-from .integer import CIntType
-from .pointer import CPointerType
-from .array import CArrayType
-from .struct import CStructType
-from .funcpointer import CFuncPointerType
-
-
-ct_struct_cache = {}
-
-def map_to_ct(ctype):
-    if isinstance(ctype, CIntType):
-        assert ctype.endianess == ENDIANESS
-        int_map = {
-            (1, True): ct.c_int8,
-            (1, False): ct.c_uint8,
-            (2, True): ct.c_int16,
-            (2, False): ct.c_uint16,
-            (4, True): ct.c_int32,
-            (4, False): ct.c_uint32,
-            (8, True): ct.c_int64,
-            (8, False): ct.c_uint64 }
-        return int_map[ctype.sizeof, ctype.signed]
-    elif isinstance(ctype, CFuncPointerType):
-        return map_to_ct(ctype.base_type)
-    elif isinstance(ctype, CPointerType):
-        assert ctype.endianess == ENDIANESS
-        assert ctype.sizeof == MACHINE_WORDSIZE // 8
-        return ct.c_void_p
-    elif isinstance(ctype, CArrayType):
-        return map_to_ct(ctype.base_type) * ctype.element_count
-    elif isinstance(ctype, CStructType):
-        struct_key = ctype.c_definition_full() + '-pack:ctype._packing_'
-        if struct_key in ct_struct_cache:
-            return ct_struct_cache[struct_key]
-        else:
-            ct_struct = type(ctype.struct_name,
-                             (ct.Structure,),
-                             dict(_pack_=ctype._packing_))
-            ct_struct_cache[struct_key] = ct_struct
-            ct_struct._fields_ = [(nm, map_to_ct(ctype._members_[nm]))
-                                  for nm in ctype._members_order_]
-            return ct_struct
-    elif isinstance(ctype, CFuncType):
-        ct_return_type = None if ctype.returns is None \
-                         else map_to_ct(ctype.returns)
-        return ct.CFUNCTYPE(ct_return_type, *map(map_to_ct, ctype.args))
-    else:
-        raise TypeError(f'Unsupported CProxyType {ctype!r}')
 
 
 class CFuncType(CProxyType):
@@ -120,10 +59,7 @@ class CFuncType(CProxyType):
         else:
             return super()._decorate_c_definition(c_def)
 
-    def c_definition(self, refering_def=''):
-        if not refering_def:
-            raise TypeError('.c_definition() for CFuncType objects always '
-                            'require a referring_def')
+    def c_definition(self, refering_def='f'):
         if len(self.args) == 0:
             partype_strs = ('void',)
         else:
@@ -140,27 +76,30 @@ class CFuncType(CProxyType):
         return f'CFuncType({self.returns!r}, [{arg_repr_str}]){attr_calls_str}'
 
     @staticmethod
-    def wrapped_pyfunc(pyfunc, name, arg_types, return_type):
+    def wrapped_pyfunc(pyfunc, name, arg_types, return_type, addrspace):
         logger = None
-        def wrapper(*args):
+        def wrapper(params_adr, retval_adr):
             global last_tunnelled_exception
             if last_tunnelled_exception is not None:
                 if logger:
-                    logger.write('<call '+name+
+                    logger.write('<call ' + name +
                                  'failed due to preceeding exception>')
                 return None if return_type is None else return_type.null_val
-            params = [arg_type(arg)
-                      for arg_type, arg in zip(arg_types, args)]
+            next_param_adr = params_adr
+            params = []
+            for arg_type in arg_types:
+                params.append(arg_type.create_cproxy_for(next_param_adr))
+                next_param_adr += arg_type.sizeof
             try:
                 if logger:
                     logger.write('    ' + (name or '<unknown>'))
                     logger.write('('+(', '.join(map(repr, params)))+')')
-                result = pyfunc(*params)
+                retval = pyfunc(*params)
                 if return_type is not None:
-                    result_obj = return_type(result)
+                    passed_retval = return_type.create_cproxy_for(retval_adr)
+                    passed_retval.val = retval
                     if logger:
-                        logger.write('->' + repr(result_obj) + '\n')
-                    return result_obj.val
+                        logger.write('->' + repr(retval) + '\n')
                 else:
                     if logger:
                         logger.write('\n')
@@ -168,7 +107,9 @@ class CFuncType(CProxyType):
                 last_tunnelled_exception = sys.exc_info()
                 if logger:
                     logger.write('!>'+repr(last_tunnelled_exception[1])+'\n')
-                return None if return_type is None else return_type.null_val
+                if return_type is not None:
+                    passed_retval = return_type.create_cproxy_for(retval_adr)
+                    passed_retval.val = return_type.null_val
         return wrapper
 
     def __call__(self, init_val:Union[str, callable, int]) -> 'CFunc':
@@ -181,25 +122,22 @@ class CFuncType(CProxyType):
         elif isinstance(init_val, CFunc):
             adr = init_val.__address__
         elif callable(init_val):
-            ct_cfunctype = map_to_ct(self)
             name = init_val.__name__ if hasattr(init_val, '__name__') \
                    else 'py-callable'
             wrapped_func = self.wrapped_pyfunc(init_val, name,
-                                               self.args, self.returns)
-            ct_cfunc = ct_cfunctype(wrapped_func)
-            pint = ct.c_uint32 if ct.sizeof(ct.c_void_p) == 4 else ct.c_uint64
-            adr = ct.cast(ct.pointer(ct_cfunc), ct.POINTER(pint)).contents.value
-            self.__addrspace__.bridgepool[adr] = (init_val, ct_cfunc)
+                                               self.args, self.returns,
+                                               self.__addrspace__)
+            adr = self.__addrspace__.create_c_code(self.sig_id, wrapped_func)
         else:
             adr = init_val
         return self.create_cproxy_for(adr)
 
     @property
-    def sig_id(self):
+    def sig_id(self) -> str:
         """
         returns unique identification string for this function signature
         """
-        return self.c_definition('f')
+        return self.c_definition()
 
 
 class CFunc(CProxy):
@@ -231,15 +169,18 @@ class CFunc(CProxy):
                           for carg_type, arg in zip(self.ctype.args, args))
         params_bufadr = addrspace.alloc_memory(len(params_bytes))
         addrspace.write_memory(params_bufadr, params_bytes)
-        retval = return_ctype()
-        addrspace.invoke_c_code(self.ctype.sig_id, self.__address__,
-                                params_bufadr, retval.__address__)
+        if return_ctype is None:
+            retval = None
+            retval_address = 0
+        else:
+            retval = return_ctype()
+            retval_address = retval.__address__
+        addrspace.invoke_c_code(self.__address__, self.ctype.sig_id,
+                                params_bufadr, retval_address)
         if last_tunnelled_exception is not None:
             exc = last_tunnelled_exception
             last_tunnelled_exception = None
             raise exc[0](exc[1]).with_traceback(exc[2])
-        elif return_ctype is None:
-            return
         else:
             return retval
 

@@ -2,9 +2,11 @@
 import os
 from os.path import relpath
 import pytest
+from unittest.mock import Mock
+from headlock.c_data_model import CProxy
 
 
-__all__ = ['testsetup_fixture', 'mem_ptr', 'val_ptr']
+__all__ = ['testsetup_fixture', 'mem_ptr', 'val_ptr', 'CMock']
 
 
 def testsetup_fixture(cls):
@@ -25,6 +27,15 @@ def testsetup_fixture(cls):
             yield ts
     ts_fixture.type = cls
     return ts_fixture
+
+
+# patch Mock, to allow .assert_called_with to check for CProxy params which
+# are volatile, as their memory is usually already freed when returning.
+orig_mock_call = Mock._mock_call
+def ext_mock_call(_mock_self, *args, **kwargs):
+    args = [a if not isinstance(a, CProxy) else a.copy() for a in args]
+    return orig_mock_call(_mock_self, *args, **kwargs)
+Mock._mock_call = ext_mock_call
 
 
 class mem_ptr:

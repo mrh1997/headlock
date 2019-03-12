@@ -1,6 +1,4 @@
-import collections.abc
 from .core import CProxyType, CProxy
-from .pointer import CPointerType
 from ..address_space import AddressSpace
 
 

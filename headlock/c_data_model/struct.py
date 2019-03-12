@@ -1,5 +1,4 @@
 import collections
-import ctypes as ct
 from .core import CProxyType, CProxy, InvalidAddressSpaceError
 from ..address_space import AddressSpace
 from typing import List, Tuple, Union, Dict

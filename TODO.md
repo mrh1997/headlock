@@ -90,9 +90,15 @@ Small (can be done by occassion)
   passing the array to a pointer or can be done explicitly by
   .array(...).adr
   Maybe even rename .ref to .ptr then?!?
+* Add ts.def_funcptr() to allow using function pointers even if no
+  typedef is available in C (CFuncPointerType could be used, but is
+  inconsistent, as all other types are derivable via def_...).
 * introduce define, that can be used to check if headlock is active
 * ptrtype.base_type is not intuitive. Maybe ptrtype.ref would be better?
   or at least sth like ".pointee"
+* comparison shall also work if python type is different.
+  I.e. ts.struct.x(1, 2) == (1, 2) does not work yet, as the .val of
+  struct returns a dict, which is not equal to the tuple.
 
 
 Medium

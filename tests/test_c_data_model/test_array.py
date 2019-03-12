@@ -1,6 +1,5 @@
 import pytest
-import ctypes as ct
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch
 
 import headlock.c_data_model as cdm
 from headlock.address_space.virtual import VirtualAddressSpace
@@ -36,8 +35,8 @@ class TestCArrayType:
                == [carray_type.base_type]
 
     def test_eq_onSamePointer_returnsTrue(self, cint_type):
-        assert cdm.CPointerType(cint_type, ct.c_int) \
-               == cdm.CPointerType(cint_type, ct.c_int)
+        assert cdm.CPointerType(cint_type, 32, 'little') \
+               == cdm.CPointerType(cint_type, 32, 'little')
 
     @pytest.mark.parametrize('diff_carr_type', [
         "othertype",

@@ -424,7 +424,7 @@ class TestTestSetup(object):
             b'int func2(int a, int b) { return 22; }'
             b'int func3(int a, int b, int c) { return 33; }'
             b'int func4(int a, int b, int c, int d) { return 44; }',
-            'func.c')
+            'func_multi_unique_sig.c')
         with TSMock() as ts:
             assert ts.func1(0) == 11
             assert ts.func2(0, 0) == 22
@@ -435,10 +435,48 @@ class TestTestSetup(object):
         TSMock = self.cls_from_ccode(
             b'int func1(int a) { return 11; }'
             b'int func2(int a) { return 22; }',
-            'func.c')
+            'func_multi_identical_sig.c')
         with TSMock() as ts:
             assert ts.func1(0) == 11
             assert ts.func2(0) == 22
+
+    def test_funcWrapper_onStructAsParamAndReturnsValue_ok(self):
+        TSMock = self.cls_from_ccode(
+            b'struct param { int m1, m2; };\n'
+            b'struct result { int m1, m2; };\n'
+            b'struct result func(struct param p) {\n'
+            b'    struct result r = {p.m1+1, p.m2+1};\n'
+            b'    return r;\n'
+            b'}',
+            'func_with_struct.c')
+        with TSMock() as ts:
+            param = ts.struct.param(100, 200)
+            assert ts.func(param) == dict(m1=101, m2=201)
+
+    def test_funcPtrWrapper_ok(self):
+        TSMock = self.cls_from_ccode(b'typedef int (* func_ptr_t)(int);\n'
+                                     b'func_ptr_t func_ptr;\n'
+                                     b'int call_func_ptr(int param) {\n'
+                                     b'    return (*func_ptr)(param);\n'
+                                     b'}',
+                                     'funcptr.c')
+        with TSMock() as ts:
+            pyfunc = Mock(return_value=111)
+            ts.func_ptr.val = ts.func_ptr_t(pyfunc)
+            ts.call_func_ptr(2222)
+            pyfunc.assert_called_once_with(2222)
+
+    def test_funcPtrWrapper_requiringStruct_ok(self):
+        TSMock = self.cls_from_ccode(b'typedef struct { int m1, m2; } strct;\n'
+                                     b'typedef int (* func_ptr_t)(strct);\n'
+                                     b'func_ptr_t func_ptr;',
+                                     'funcptr_with_struct.c')
+        with TSMock() as ts:
+            def pyfunc(strct):
+                assert strct.m1 == 1111
+                assert strct.m2 == 2222
+            ts.func_ptr.val = ts.func_ptr_t(pyfunc)
+            ts.func_ptr(ts.strct(1111, 2222))
 
     def test_varWrapper_onNotInstantiatedTestSetup_returnsCProxyType(self):
         TSMock = self.cls_from_ccode(b'short var = 1;',

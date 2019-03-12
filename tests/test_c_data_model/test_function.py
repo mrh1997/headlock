@@ -1,82 +1,9 @@
 import pytest
-import ctypes as ct
 from unittest.mock import patch, Mock
-import gc
 
 import headlock.c_data_model as cdm
-from headlock.address_space.inprocess import InprocessAddressSpace, \
-    MACHINE_WORDSIZE, ENDIANESS
-from headlock.c_data_model.function import map_to_ct
-
-
-@pytest.fixture
-def inproc_addrspace():
-    return InprocessAddressSpace([])
-
-
-@pytest.fixture
-def inproc_cint_type(unbound_cint_type, inproc_addrspace):
-    return unbound_cint_type.bind(inproc_addrspace)
-
-
-class TestMapCTypeToCtType:
-
-    def test_int_ok(self):
-        uint8_t = cdm.CIntType('i', 8, False, ENDIANESS)
-        assert map_to_ct(uint8_t) == ct.c_uint8
-        int64_t = cdm.CIntType('i', 64, True, ENDIANESS)
-        assert map_to_ct(int64_t) == ct.c_int64
-
-    def test_pointer_returnsCtVoidP(self, unbound_cint16_type):
-        int16_ptr = cdm.CPointerType(unbound_cint16_type,
-                                     MACHINE_WORDSIZE, ENDIANESS)
-        assert map_to_ct(int16_ptr) == ct.c_void_p
-
-    def test_voidPtr_ok(self):
-        cvoidptr = cdm.CVoidType().ptr
-        assert map_to_ct(cvoidptr) == ct.c_void_p
-    
-    def test_func_onSimpleCase_ok(self, cfunc_type):
-        assert map_to_ct(cfunc_type) == ct.CFUNCTYPE(None)
-
-    def test_func_onReturnValAndParams_ok(self):
-        uint8_t = cdm.CIntType('i', 8, False, ENDIANESS)
-        uint16_t = cdm.CIntType('i', 16, False, ENDIANESS)
-        cfunc_type = cdm.CFuncType(uint8_t, [uint16_t, uint8_t])
-        assert map_to_ct(cfunc_type) == ct.CFUNCTYPE(ct.c_uint8,
-                                                     ct.c_uint16, ct.c_uint8)
-
-    def test_funcPtr_ok(self):
-        cfuncptr_type = cdm.CFuncType().ptr
-        assert map_to_ct(cfuncptr_type) == ct.CFUNCTYPE(None)
-
-    def test_array_ok(self, unbound_cint16_type):
-        int16_array = cdm.CArrayType(unbound_cint16_type, 123)
-        assert map_to_ct(int16_array) == ct.c_int16 * 123
-
-    def test_struct_ok(self, unbound_cint16_type, unbound_cint_type):
-        cstruct_type = cdm.CStructType('name_of_strct',
-                                       [('member1', unbound_cint_type),
-                                        ('member2', unbound_cint16_type)],
-                                       2)
-        ct_struct = map_to_ct(cstruct_type)
-        assert ct_struct.__name__ == 'name_of_strct'
-        assert ct_struct._fields_ == [('member1', ct.c_int),
-                                      ('member2', ct.c_int16)]
-        assert ct_struct._pack_ == 2
-
-    def test_struct_onCallTwiceOnSameStruct_returnCachedType(self, unbound_cint_type):
-        cstruct_type = cdm.CStructType('s', [('m', unbound_cint_type)])
-        assert map_to_ct(cstruct_type) is map_to_ct(cstruct_type)
-
-    def test_struct_onRecursiveStruct_ok(self):
-        cstruct_type = cdm.CStructType('s')
-        cstructptr_type = cdm.CPointerType(cstruct_type,
-                                           MACHINE_WORDSIZE, ENDIANESS)
-        cstruct_type.delayed_def([('member', cstructptr_type)])
-        ct_struct = map_to_ct(cstruct_type)
-        print(repr(ct_struct._fields_[0][1]))
-        assert ct_struct._fields_[0][1] == ct.c_void_p
+import headlock.c_data_model.function
+from headlock.address_space.inprocess import MACHINE_WORDSIZE, ENDIANESS
 
 
 class TestCFuncType:
@@ -140,8 +67,7 @@ class TestCFuncType:
 
     def test_cDefinition_onNoReferringDefParam_raiseTypeError(self):
         cfunc_type = cdm.CFuncType(None, [])
-        with pytest.raises(TypeError):
-            _ = cfunc_type.c_definition()
+        assert cfunc_type.c_definition() == 'void f(void)'
 
     def test_cDefinition_onParamsAndReturnVal_ok(self, unbound_cint_type, unbound_cint16_type):
         cfunc_type = cdm.CFuncType(unbound_cint_type,
@@ -151,8 +77,8 @@ class TestCFuncType:
 
     def test_cDefintition_onAttr_ok(self):
         cdecl_cfunc_type = cdm.CFuncType().with_attr('__cdecl')
-        assert cdecl_cfunc_type.c_definition('f') \
-               == 'void __cdecl f(void)'
+        assert cdecl_cfunc_type.c_definition('func') \
+               == 'void __cdecl func(void)'
 
     def test_shallowIterSubTypes_onBasicFunc_returnsNothing(self):
         test_func = cdm.CFuncType()
@@ -190,46 +116,50 @@ class TestCFuncType:
             cfunc_type(0)
 
     @patch.object(cdm.CFuncType, 'CPROXY_CLASS')
-    def test_call_onInt_callsConstructorWithFuncAdrOnly(self, CPROXY_CLASS, inproc_addrspace):
-        cfunc_type = cdm.CFuncType(addrspace=inproc_addrspace)
+    def test_call_onInt_callsConstructorWithFuncAdrOnly(self, CPROXY_CLASS, addrspace):
+        cfunc_type = cdm.CFuncType(addrspace=addrspace)
         assert cfunc_type(123) is CPROXY_CLASS.return_value
         CPROXY_CLASS.assert_called_once_with(cfunc_type, 123)
 
     @patch.object(cdm.CFuncType, 'CPROXY_CLASS')
-    def test_call_onStr_retrievesAdrOfSymbolAndPassesItToContructor(self, CPROXY_CLASS):
-        inproc_addrspace.get_symbol_adr = Mock(return_value=678)
-        cfunc_type = cdm.CFuncType(addrspace=inproc_addrspace)
+    def test_call_onStr_retrievesAdrOfSymbolAndPassesItToContructor(self, CPROXY_CLASS, addrspace, cfunc_type):
+        func_adr = addrspace.simulate_symbol('funcname', Mock())
         assert cfunc_type('funcname') is CPROXY_CLASS.return_value
-        inproc_addrspace.get_symbol_adr.assert_called_once_with('funcname')
-        CPROXY_CLASS.assert_called_once_with(cfunc_type, 678)
+        CPROXY_CLASS.assert_called_once_with(cfunc_type, func_adr)
 
     @patch.object(cdm.CFuncType, 'CPROXY_CLASS')
-    def test_call_onCallable_bridgesCallable(self, CPROXY_CLASS, inproc_cint_type, inproc_addrspace):
-        cfunc_type = cdm.CFuncType(inproc_cint_type,
-                                   [inproc_cint_type], inproc_addrspace)
-        callback = Mock(return_value=123)
-        assert cfunc_type(callback) is CPROXY_CLASS.return_value
-        ct_func_type = ct.CFUNCTYPE(ct.c_int, ct.c_int)
-        bridge_adr = CPROXY_CLASS.call_args[0][1]
-        ct_func_obj = ct_func_type(bridge_adr)
-        assert ct_func_obj(456) == 123
-        callback.assert_called_once_with(456)
+    def test_call_onCallable_bridgesCallable(self, CPROXY_CLASS, cint_type, addrspace):
+        cfunc_type = cdm.CFuncType(cint_type, [cint_type, cint_type], addrspace)
+        callback = Mock(return_value=0xAABBCCDD)
+        cfunc_obj = cfunc_type(callback)
+        _, bridge_adr = CPROXY_CLASS.call_args[0]
+        result_adr = addrspace.alloc_memory(4)
+        param_adr = addrspace.alloc_memory(8)
+        addrspace.write_memory(param_adr, b'\x44\x33\x22\x11\x99\x88\x77\x66')
+        sig_id = 'cint f(cint p0, cint p1)'
+        addrspace.invoke_c_code(bridge_adr, sig_id, param_adr, result_adr)
+        assert addrspace.read_memory(result_adr, 4) == b'\xDD\xCC\xBB\xAA'
+        callback.assert_called_once_with(0x11223344, 0x66778899)
         assert isinstance(callback.call_args[0][0], cdm.CInt)
+        assert cfunc_obj is CPROXY_CLASS.return_value
 
     @patch.object(cdm.CFuncType, 'CPROXY_CLASS')
-    def test_call_onCallable_ensuresBridgeIsReferencedPermanently(self, CPROXY_CLASS, inproc_cint_type, inproc_addrspace):
-        cfunc_type = cdm.CFuncType(inproc_cint_type, [], inproc_addrspace)
-        cfunc_type(Mock(return_value=123))
-        gc.collect()
-        ct_func_type = ct.CFUNCTYPE(ct.c_int)
-        bridge_adr = CPROXY_CLASS.call_args[0][1]
-        ct_func_obj = ct_func_type(bridge_adr)
-        assert ct_func_obj() == 123
+    def test_call_onCallableWithRetValWhichRaisesException_returnsNullVal(self, CPROXY_CLASS, cint_type, addrspace):
+        cfunc_type = cdm.CFuncType(cint_type, [], addrspace)
+        cfunc_type(Mock(side_effect=IOError))
+        wrapped_func = next(iter(addrspace.funcs.values()))
+        retval_adr = addrspace.alloc_memory(4)
+        addrspace.write_memory(retval_adr, b'aaaa')
+        wrapped_func('cint f(void)', 0, retval_adr)
+        exc = headlock.c_data_model.function.last_tunnelled_exception
+        headlock.c_data_model.function.last_tunnelled_exception = None
+        assert exc[0] is IOError
+        assert addrspace.read_memory(retval_adr, 4) == b'\x00\x00\x00\x00'
 
     @patch.object(cdm.CFuncType, 'CPROXY_CLASS')
-    def test_call_onCFunc_returnsNewCFunc(self, CPROXY_CLASS, inproc_cint_type, inproc_addrspace):
-        cfunc_type = cdm.CFuncType(None, addrspace=inproc_addrspace)
-        cfunc_type2 = cdm.CFuncType(inproc_cint_type, [], inproc_addrspace)
+    def test_call_onCFunc_returnsNewCFunc(self, CPROXY_CLASS, cint_type, addrspace):
+        cfunc_type = cdm.CFuncType(None, addrspace=addrspace)
+        cfunc_type2 = cdm.CFuncType(cint_type, [], addrspace)
         cfunc_obj = cdm.CFunc(cfunc_type, 123)
         cfunc_type2(cfunc_obj)
         CPROXY_CLASS.assert_called_once_with(cfunc_type2, 123)
@@ -249,93 +179,83 @@ class TestCFunc:
         with pytest.raises(AttributeError):
             cfunc_obj.val = 123
 
+    @pytest.mark.skip
     def test_getName_onPyCallback_returnsNameOfPyFuncObj(self, cfunc_type):
         @cfunc_type
         def py_cfunc_obj(*args):
             pass
         assert py_cfunc_obj.name == 'py_cfunc_obj'
 
-    def test_getName_onCFunc_returnsNameOfCFunc(self, abs_cfunc_obj):
-        assert abs_cfunc_obj.name == 'abs'
+    def test_getName_onCFunc_returnsNameOfCFunc(self, cfunc_type, addrspace):
+        addrspace.simulate_symbol('funcname', Mock())
+        cfunc_obj = cfunc_type('funcname')
+        assert cfunc_obj.name == 'funcname'
 
-    def test_getName_onCFuncWithoutName_returnsNone(self, cfunc_type, cfunc_obj):
+    def test_getName_onCCodeWithoutName_returnsNone(self, cfunc_type, cfunc_obj):
         unknown_adr_cfunc_obj = cfunc_type(1234)
         assert unknown_adr_cfunc_obj.name is None
+
+    def test_call_onCCode_runsAddrSpaceInvokeCCode(self, cint_type, addrspace):
+        addrspace.simulate_c_code('funcname', 'cint f(void)',
+                                  retval=b'\x44\x33\x22\x11')
+        func_type = cdm.CFuncType(cint_type, [], addrspace)
+        func_obj = func_type('funcname')
+        assert func_obj() == 0x11223344
+
+    def test_call_onArgs_passesArgs(self, cint_type, cint16_type, addrspace):
+        addrspace.simulate_c_code('func_with_params',
+                                  exp_params=b'\x34\x12\x00\x00\x56\x00')
+        cfunc_type = cdm.CFuncType(None, [cint_type, cint16_type], addrspace)
+        cfunc_obj = cfunc_type('func_with_params')
+        cfunc_obj(cint_type(0x1234), 0x56)
+
+    def test_call_onSimpleResult_returnsCProxy(self, cint_type, addrspace):
+        cfunc_type = cdm.CFuncType(cint_type, addrspace=addrspace)
+        cfunc_obj = cfunc_type(Mock(return_value=123))
+        result = cfunc_obj()
+        assert isinstance(result, cdm.CInt)
+        assert result == 123
 
     def test_call_onPyCallable_callsPyCallable(self, cfunc_type):
         py_callable = Mock()
         cfunc_obj = cfunc_type(py_callable)
-        cfunc_obj()
+        cfunc_obj2 = cfunc_type(cfunc_obj.__address__)
+        cfunc_obj2()
         py_callable.assert_called_once()
 
-    def test_call_onArgs_passesArgs(self, inproc_cint_type, unbound_cint16_type, inproc_addrspace):
-        cint16_type = unbound_cint16_type.bind(inproc_addrspace)
-        cfunc_type = cdm.CFuncType(None, [inproc_cint_type, cint16_type],
-                                   inproc_addrspace)
-        callback = Mock()
-        cfunc_obj = cfunc_type(callback)
-        cfunc_obj(inproc_cint_type(12), 34)
-        callback.assert_called_with(12, 34)
-        assert callback.call_args[0][0].ctype == inproc_cint_type
-        assert callback.call_args[0][1].ctype == cint16_type
-
-    def test_call_onCallableWhichRaisesException_forwardsException(self, inproc_addrspace):
-        cfunc_type = cdm.CFuncType(None, [], inproc_addrspace)
+    def test_call_onCallableWhichRaisesException_forwardsException(self, cfunc_type, addrspace):
         callback = Mock(side_effect=ValueError('some exception text'))
         cfunc_obj = cfunc_type(callback)
         with pytest.raises(ValueError) as e:
             cfunc_obj()
         assert str(e.value) == 'some exception text'
 
-    def test_call_onSimpleResult_returnsCProxy(self, inproc_cint_type, inproc_addrspace):
-        @cdm.CFuncType(inproc_cint_type, addrspace=inproc_addrspace)
-        def cfunc_obj():
-            return 123
-        result = cfunc_obj()
-        assert isinstance(result, cdm.CInt)
-        assert result == 123
-
     @pytest.mark.parametrize('wrong_param_count', [[], [1, 2]])
-    def test_call_onWrongParamCount_raisesTypeError(self, inproc_cint_type, wrong_param_count, inproc_addrspace):
-        @cdm.CFuncType(None, [inproc_cint_type], inproc_addrspace)
+    def test_call_onWrongParamCount_raisesTypeError(self, cint_type, wrong_param_count, addrspace):
+        @cdm.CFuncType(None, [cint_type], addrspace)
         def cfunc_obj(param):
             pass
         with pytest.raises(TypeError):
             cfunc_obj(*wrong_param_count)
 
-    def test_call_onInvalidReturnValueType_raisesValueError(self, inproc_cint_type, inproc_addrspace):
-        @cdm.CFuncType(inproc_cint_type, addrspace=inproc_addrspace)
-        def cfunc_obj(*args):
-            return 4.4
+    def test_call_onInvalidReturnValueType_raisesValueError(self, cint_type, addrspace):
+        cfunc_type = cdm.CFuncType(cint_type, addrspace=addrspace)
+        cfunc_obj = cfunc_type(Mock(return_value=4.4))
         with pytest.raises(TypeError):
             cfunc_obj()
 
-    def test_call_onReturnTypeVoid_returnsNone(self, inproc_addrspace):
-        @cdm.CFuncType(None, addrspace=inproc_addrspace)
-        def void_cfunc_obj():
-            pass
+    def test_call_onReturnTypeVoid_returnsNone(self, addrspace):
+        void_cfunc_type = cdm.CFuncType(None, addrspace=addrspace)
+        void_cfunc_obj = void_cfunc_type(Mock())
         assert void_cfunc_obj() is None
 
-    def test_call_onRaisesException_forwardsException(self, inproc_addrspace):
-        @cdm.CFuncType(addrspace=inproc_addrspace)
-        def raise_cfunc_obj():
-            raise NotImplementedError()
-        with pytest.raises(NotImplementedError):
-            raise_cfunc_obj()
-
-    def test_call_onCFunc_returnsOk(self, abs_cfunc_obj):
-        assert abs_cfunc_obj(-9).val == 9
-
+    @pytest.mark.skip
     def test_repr_onPyCallbackWithName_returnsNameOfCallback(self, cfunc_type):
         def py_callable(*args): return 0
         cfunc_obj = cfunc_type(py_callable)
         assert repr(cfunc_obj) == "<CFunc of 'py_callable'>"
 
-    def test_repr_onCFunc_returnsNameOfCFunc(self, abs_cfunc_obj):
-        assert repr(abs_cfunc_obj) == "<CFunc of 'abs'>"
-
-    @patch.object(cdm, 'CFuncPointerType')
-    def test_getAdr_onPyCallback_createsCFuncPointer(self, CFuncPointerType, cfunc_obj):
-        cfunc_type = CFuncPointerType.return_value
-        assert cfunc_obj.adr is cfunc_type.return_value
-        cfunc_type.assert_called_with(cfunc_obj.__address__)
+    def test_repr_onCFunc_returnsNameOfCFunc(self, addrspace, cfunc_type):
+        addrspace.simulate_c_code('some_funcname')
+        cfunc_obj = cfunc_type('some_funcname')
+        assert repr(cfunc_obj) == "<CFunc of 'some_funcname'>"

@@ -1,28 +1,7 @@
 import copy
-import ctypes as ct
 from ..address_space import AddressSpace
 from .memory_access import CMemory, WriteProtectError
 from typing import Any, Iterable
-
-
-CTypePointer = type(ct.POINTER(ct.c_int))
-CTypePyFuncPointer = type(ct.CFUNCTYPE(None))
-
-
-def issubclass_ctypes_ptr(cls):
-    return cls == ct.c_char_p or cls == ct.c_wchar_p or \
-           isinstance(cls, CTypePointer) or isinstance(cls, CTypePyFuncPointer)
-
-
-def issubclass_ctypes(cls):
-    # this is a dirty hack, as there is no access to the public visible
-    # common base class of ctypes objects
-    return cls.__mro__[-2].__name__ == '_CData' or \
-           issubclass(cls, (ct.Structure, ct.Union))
-
-
-def isinstance_ctypes(obj):
-    return issubclass_ctypes(type(obj))
 
 
 class InvalidAddressSpaceError(Exception):
