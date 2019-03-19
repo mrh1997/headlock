@@ -17,7 +17,8 @@ C/Python bridges like ctypes, cffi, swig, cython, ...:
    python file.
    These steps done by headlock include:
 
-    * No need to create Makefiles/Buildscripts.
+    * No need to create extra Makefiles/Buildscripts for unit testing a single
+      C module
     * No need to run extra build steps before using the C code.
     * No need to rewrite the C moduels interface definition (the header file)
       in Python.
@@ -70,13 +71,11 @@ C/Python bridges like ctypes, cffi, swig, cython, ...:
 
 Explicitly Non-Goals Are:
 
-   * Support for C++
-
    * High Performance (This does not mean that it is slow.
      But if speed conflicts with one of the goals of this project,
      there will be no compromises in favour of speed).
 
    * Being self-contained
-     (At least A C-compiler will always be required to be installed).
+     (At least LLVM and a C-compiler will always be required to be installed).
 
    * Support for Python < 3.6

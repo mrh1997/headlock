@@ -82,11 +82,13 @@ def write_c2py_bridge(output:TextIO, required_funcptrs:Iterable[CFuncType],
             for instance_ndx in range(max_instances):
                 write_c2py_bridge_func(output, bridge_ndx, instance_ndx, cfunc)
     output.write(
-        f'void (* _c2py_bridge_[][{max_instances}])(void) = {{\n')
+        f'typedef void (* _c2py_bridge_func_t)(void);\n'
+        f'_c2py_bridge_func_t _c2py_bridge_[][{max_instances}] = {{\n')
     for bridge_ndx in range(len(bridge_ndxs)):
         output.write('\t{ ')
         for instance_ndx in range(max_instances):
-            output.write(f'_c2py_bridge_{bridge_ndx}_{instance_ndx}, ')
+            output.write(f'(_c2py_bridge_func_t) '
+                         f'_c2py_bridge_{bridge_ndx}_{instance_ndx}, ')
         output.write(' },\n')
     output.write('};\n\n')
     return bridge_ndxs

@@ -12,6 +12,7 @@ Interface changing
  * refactor PtrArrFactoryMixIn into factory object
  * .sizeof and .offsetof() shall be available at runtime only and
    done by the compiler (seems to be compiler dependent)
+ * replace packing by libclangs sizeof/offsetof to support #pragma pack
 
 Small (can be done by occassion)
 --------------------------------
@@ -99,6 +100,7 @@ Small (can be done by occassion)
 * comparison shall also work if python type is different.
   I.e. ts.struct.x(1, 2) == (1, 2) does not work yet, as the .val of
   struct returns a dict, which is not equal to the tuple.
+* Add Support for 64bit MinGW (is stored in different directory than 32bit)
 
 
 Medium
@@ -144,7 +146,9 @@ Major/Investigation necessary
   + if a macro is set in the TestSetup it must not be overwritten by the parser
     (= allow overwriting macros)
 * test C instrumentalization (address sanitizer, see -f... flags)
-* packing pragma (attribute?) is not supported
+* Switch from access via ABI to access via API. This would require less
+  compiler adaptions
+* C++ Support
 
 
 Needed for publishing

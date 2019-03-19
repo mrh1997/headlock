@@ -1,12 +1,9 @@
-import ctypes as ct
 import functools, itertools
 import os
 import sys
 import weakref
-import abc
-import hashlib
 import platform
-from typing import List, Iterator, Dict, Any, Tuple, Union, Set
+from typing import List, Dict, Any, Union, Set
 from pathlib import Path
 
 from .c_data_model import BuildInDefs, CStructType, CEnumType, CFuncType, \
@@ -14,7 +11,7 @@ from .c_data_model import BuildInDefs, CStructType, CEnumType, CFuncType, \
 from .address_space import AddressSpace
 from .address_space.inprocess import InprocessAddressSpace
 from .c_parser import CParser, ParseError
-from .toolchains import ToolChainDriver, BuildError, TransUnit
+from .buildsys_drvs import BuildDescription, BuildError, gcc, mingw
 from . import bridge_gen
 
 
@@ -61,89 +58,6 @@ class StructUnionEnumCTypeCollection:
         self.__addrspace__ = addrspace
 
 
-class CModuleDecoratorBase:
-    """
-    This is a class-decorator, that creates a derived class from a TestSetup
-    which is extended by a C-Module.
-    """
-
-    def __call__(self, parent_cls):
-        class SubCls(parent_cls):
-            pass
-        SubCls.__name__ = parent_cls.__name__
-        SubCls.__qualname__ = parent_cls.__qualname__
-        SubCls.__module__ = parent_cls.__module__
-        for transunit in self.iter_transunits(deco_cls=parent_cls):
-            SubCls.__extend_by_transunit__(transunit)
-        req_libs, lib_dirs = self.get_lib_search_params(deco_cls=parent_cls)
-        SubCls.__extend_by_lib_search_params__(req_libs, lib_dirs)
-        return SubCls
-
-    @abc.abstractmethod
-    def iter_transunits(self, deco_cls: 'TestSetup') -> Iterator[TransUnit]:
-        return iter([])
-
-    def get_lib_search_params(self, deco_cls: 'TestSetup') \
-            -> Tuple[List[str], List[str]]:
-        return [], []
-
-
-class CModule(CModuleDecoratorBase):
-    """
-    This is a standard implementation for CModuleDecoratorBase, that allows
-    multiple source-filenames and parametersets to be combined into one module.
-    """
-
-    def __init__(self, *src_filenames:Union[str, Path],
-                 include_dirs:List[Union[os.PathLike, str]]=(),
-                 library_dirs:List[Union[os.PathLike, str]]=(),
-                 required_libs:List[str]=(),
-                 predef_macros:Dict[str, Any]=None,
-                 **kw_predef_macros:Any):
-        if len(src_filenames) == 0:
-            raise ValueError('expect at least one positional argument as C '
-                             'source filename')
-        self.src_filenames = list(map(Path, src_filenames))
-        self.include_dirs = list(map(Path, include_dirs))
-        self.library_dirs = list(map(Path, library_dirs))
-        self.required_libs = required_libs
-        self.predef_macros = kw_predef_macros
-        if predef_macros:
-            self.predef_macros.update(predef_macros)
-
-    def iter_transunits(self, deco_cls):
-        srcs = self._resolve_and_check_list('C Sourcefile', self.src_filenames,
-                                            Path.is_file, deco_cls)
-        for src in srcs:
-            yield TransUnit(
-                self.src_filenames[0].stem,
-                src,
-                self._resolve_and_check_list(
-                    'Include directorie', self.include_dirs, Path.is_dir,
-                    deco_cls),
-                self.predef_macros)
-
-    def get_lib_search_params(self, deco_cls):
-        return (list(self.required_libs),
-                self._resolve_and_check_list('Library Directorie',
-                                             self.library_dirs, Path.is_dir,
-                                             deco_cls))
-
-    @classmethod
-    def _resolve_and_check_list(cls, name, paths, valid_check, deco_cls):
-        abs_paths = [cls.resolve_path(p, deco_cls) for p in paths]
-        invalid_paths = [str(p) for p in abs_paths if not valid_check(p)]
-        if invalid_paths:
-            raise IOError('Cannot find ' + name + '(s): '
-                          + ', '.join(invalid_paths))
-        return abs_paths
-
-    @staticmethod
-    def resolve_path(filename, deco_cls:'TestSetup') -> Path:
-        mod = sys.modules[deco_cls.__module__]
-        return (Path(mod.__file__).parent / filename).resolve()
-
-
 SYS_WHITELIST = [
     'NULL', 'EOF',
     'int8_t', 'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t',
@@ -161,13 +75,11 @@ class TestSetup(BuildInDefs):
     __test__ = False   # avoid that pytest/nose/... collect this as test
 
     __parser_factory__ = functools.partial(CParser, sys_whitelist=SYS_WHITELIST)
-    __TOOLCHAIN__:ToolChainDriver = None
+    __builddesc__:BuildDescription = None
 
     __globals:Dict[str, CProxyType] = {}
     __implementations:Set[str] = set()
     __required_funcptrs:Dict[str, CFuncType] = {}
-
-    __transunits__ = frozenset()
 
     __required_libraries = []
     __library_directories = []
@@ -176,72 +88,47 @@ class TestSetup(BuildInDefs):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        bases = list(reversed([base for base in cls.__bases__
-                               if issubclass(base, TestSetup)]))
-        cls.__globals = bases[0].__globals.copy()
-        cls.__implementations = bases[0].__implementations.copy()
-        cls.__required_funcptrs = bases[0].__required_funcptrs.copy()
-        cls.struct = type(cls.__name__ + '_struct',
-                          tuple(base.struct for base in bases),
-                          {})
-        cls.union = cls.struct
-        cls.enum = cls.struct
-        cls.__transunits__ = bases[0].__transunits__
-        for base in reversed(bases[1:]):
-            cls.__globals.update(base.__globals)
-            cls.__implementations.update(base.__implementations)
-            cls.__transunits__ |= base.__transunits__
+        cls.__builddesc__ = cls.__builddesc_factory__()
+        cls.__add_c_interface__(cls.__builddesc__)
 
     @classmethod
-    def get_ts_abspath(cls):
+    def __builddesc_factory__(cls) -> BuildDescription:
+        # This is a preliminary workaround until there is a clean solution on
+        # how to configure builddescs.
+        builddesc_cls = mingw.get_default_builddesc_cls()
         src_filename = sys.modules[cls.__module__].__file__
-        return Path(src_filename).resolve()
-
-    @classmethod
-    def get_src_dir(cls):
-        return cls.get_ts_abspath().parent
-
-    @classmethod
-    def get_build_dir(cls):
-        return cls.get_src_dir() / cls._BUILD_DIR_ / cls.get_ts_abspath().stem \
-               / cls.get_ts_name()
-
-    @classmethod
-    def get_ts_name(cls):
+        ts_abspath = Path(src_filename).resolve()
+        src_dir = ts_abspath.parent
         static_qualname = cls.__qualname__.replace('.<locals>.', '.')
         shortend_name_parts = [nm[:32] for nm in static_qualname.split('.')]
         rev_static_qualname = '.'.join(reversed(shortend_name_parts))
-        if '.<locals>.' not in cls.__qualname__:
-            return rev_static_qualname
-        else:
-            # this is a dynamicially generated class
-            # => require separate directory for every generated variant
-            hash = hashlib.md5()
-            for tu in sorted(cls.__transunits__):
-                hash.update(bytes(tu.abs_src_filename))
-                hash.update(repr(sorted(tu.abs_incl_dirs)).encode('utf8'))
-                hash.update(repr(sorted(tu.predef_macros.items()))
-                            .encode('utf8'))
-            return rev_static_qualname + '_' + hash.hexdigest()[:8]
+        build_dir = src_dir / cls._BUILD_DIR_ / ts_abspath.stem \
+               / rev_static_qualname
+        return builddesc_cls(rev_static_qualname, build_dir,
+                             unique_name='.<locals>.' not in cls.__qualname__)
 
     @classmethod
-    def __extend_by_transunit__(cls, transunit:TransUnit):
-        predef_macros = cls.__TOOLCHAIN__.sys_predef_macros()
-        predef_macros.update(transunit.predef_macros)
-        parser = cls.__parser_factory__(
-            predef_macros,
-            transunit.abs_incl_dirs,
-            cls.__TOOLCHAIN__.sys_incl_dirs(),
-            target_compiler=cls.__TOOLCHAIN__.CLANG_TARGET)
-        try:
-            parser.read(str(transunit.abs_src_filename))
-        except ParseError as exc:
-            exc = CompileError(exc.errors, transunit.abs_src_filename)
-            raise exc
-        else:
+    def __add_c_interface__(cls, builddesc:BuildDescription):
+        cls.__globals = {}
+        cls.__implementations = set()
+        cls.__required_funcptrs = {}
+        for c_src in builddesc.c_sources():
+            predef_macros = builddesc.sys_predef_macros()
+            predef_macros.update(builddesc.predef_macros()[c_src])
+            parser = cls.__parser_factory__(
+                predef_macros,
+                builddesc.incl_dirs()[c_src],
+                builddesc.sys_incl_dirs(),
+                target_compiler=builddesc.clang_target())
+            try:
+                parser.read(c_src)
+            except ParseError as exc:
+                exc = CompileError(exc.errors, c_src)
+                raise exc
+
             cls.__globals.update(parser.funcs)
             cls.__globals.update(parser.vars)
-            cls.__implementations |= parser.implementations
+            cls.__implementations.update(parser.implementations)
             cls.__required_funcptrs.update({
                 subtype.base_type.sig_id: subtype.base_type
                 for typedict in [parser.funcs, parser.vars,
@@ -249,6 +136,7 @@ class TestSetup(BuildInDefs):
                 for ctype in typedict.values()
                 for subtype in ctype.iter_subtypes()
                 if isinstance(subtype, CFuncPointerType)})
+
             for name, ctype in parser.funcs.items():
                 descr = GlobalCProxyDescriptor(name, ctype)
                 setattr(cls, name, descr)
@@ -265,22 +153,8 @@ class TestSetup(BuildInDefs):
                     setattr(cls.struct, typedef.struct_name, typedef)
                 elif isinstance(typedef, CEnumType):
                     setattr(cls.enum, name, typedef)
-
             for name, macro_def in parser.macros.items():
                 setattr(cls, name, macro_def)
-
-        if transunit.abs_src_filename.suffix != '.h':
-            cls.__transunits__ |= {transunit}
-
-    @classmethod
-    def __extend_by_lib_search_params__(cls, req_libs:List[str],
-                                        lib_dirs:List[Path]=()):
-        cls.__required_libraries = cls.__required_libraries[:] + \
-                                   [req_lib for req_lib in req_libs
-                                    if req_lib not in cls.__required_libraries]
-        cls.__library_directories = cls.__library_directories[:] + \
-                                    [libdir for libdir in lib_dirs
-                                     if libdir not in cls.__library_directories]
 
     def __init__(self):
         super(TestSetup, self).__init__()
@@ -326,22 +200,15 @@ class TestSetup(BuildInDefs):
             self.__c2py_bridge_ndxs = bridge_gen.write_c2py_bridge(
                 output, c2py_funcs, MAX_C2PY_BRIDGE_INSTANCES)
 
-
     def __build__(self):
-        if not self.get_build_dir().exists():
-            self.get_build_dir().mkdir(parents=True)
-        bridge_file_path = self.get_build_dir() / '__headlock_bridge__.c'
+        if not self.__builddesc__.build_dir.exists():
+            self.__builddesc__.build_dir.mkdir(parents=True)
+        bridge_file_path = self.__builddesc__.build_dir/'__headlock_bridge__.c'
         self.__write_bridge__(bridge_file_path)
-        mock_tu = TransUnit('mocks', bridge_file_path, [], {})
-        self.__TOOLCHAIN__.build(self.get_ts_name(),
-                                 self.get_build_dir(),
-                                 sorted(self.__transunits__ | {mock_tu}),
-                                 self.__required_libraries,
-                                 self.__library_directories)
+        self.__builddesc__.build([bridge_file_path])
 
     def __load__(self):
-        exepath = self.__TOOLCHAIN__.exe_path(self.get_ts_name(),
-                                              self.get_build_dir())
+        exepath = self.__builddesc__.exe_path()
         self.__addrspace__ = InprocessAddressSpace(os.fspath(exepath),
                                                    self.__py2c_bridge_ndxs,
                                                    self.__c2py_bridge_ndxs,
@@ -416,19 +283,60 @@ class TestSetup(BuildInDefs):
         self.__unload_events.append((func, args))
 
 
-# This is a preliminary workaround until there is a clean solution on
-# how to configure toolchains.
-if sys.platform == 'win32':
-    if platform.architecture()[0] == '32bit':
-        from .toolchains.mingw import MinGW32ToolChain
-        TestSetup.__TOOLCHAIN__ = MinGW32ToolChain()
-    else:
-        from .toolchains.mingw import MinGW64ToolChain
-        TestSetup.__TOOLCHAIN__ = MinGW64ToolChain()
-elif sys.platform == 'linux':
-    if platform.architecture()[0] == '32bit':
-        from .toolchains.gcc import Gcc32ToolChain
-        TestSetup.__TOOLCHAIN__ = Gcc32ToolChain()
-    else:
-        from .toolchains.gcc import Gcc64ToolChain
-        TestSetup.__TOOLCHAIN__ = Gcc64ToolChain()
+class CModule:
+    """
+    This is a decorator for classes derived from TestSetup, that allows
+    multiple source-filenames and parametersets to be combined into one module.
+    """
+
+    def __init__(self, *src_filenames:Union[str, Path],
+                 include_dirs:List[Union[os.PathLike, str]]=(),
+                 library_dirs:List[Union[os.PathLike, str]]=(),
+                 required_libs:List[str]=(),
+                 predef_macros:Dict[str, Any]=None,
+                 **kw_predef_macros:Any):
+        self.src_filenames = list(map(Path, src_filenames))
+        self.include_dirs = list(map(Path, include_dirs))
+        self.library_dirs = list(map(Path, library_dirs))
+        self.required_libs = required_libs
+        self.predef_macros = kw_predef_macros
+        if predef_macros:
+            self.predef_macros.update(predef_macros)
+
+    def __call__(self, ts):
+        @classmethod
+        def __builddesc_factory__(cls):
+            builddesc = super(ts, cls).__builddesc_factory__()
+            if not isinstance(builddesc, gcc.GccBuildDescription):
+                raise ValueError('currently only GCC based BuildDescriptions '
+                                 'are allowed')
+            for c_src in self.src_filenames:
+                abs_c_src = self.resolve_and_check(c_src, Path.is_file, ts)
+                builddesc.add_c_source(abs_c_src)
+            for incl_dir in self.include_dirs:
+                abs_incl_dir = self.resolve_and_check(incl_dir, Path.is_dir, ts)
+                builddesc.add_incl_dir(abs_incl_dir)
+            for lib_dir in self.library_dirs:
+                abs_lib_dir = self.resolve_and_check(lib_dir, Path.is_dir, ts)
+                builddesc.add_lib_dir(abs_lib_dir)
+            for req_lib in self.required_libs:
+                builddesc.add_req_lib(req_lib)
+            builddesc.add_predef_macros(self.predef_macros)
+            return builddesc
+        if not hasattr(ts, '__builddesc_factory__'):
+            raise TypeError('CModule can only decorate classes that are '
+                            'derived from classes that provide '
+                            '"__builddesc_factory__" method')
+        if '__builddesc_factory__' in ts.__dict__:
+            raise TypeError('CModule cannot be used for classes that overwrite '
+                            '"__builddesc_factory__" explicitly.')
+        ts.__builddesc_factory__ = __builddesc_factory__
+        return ts
+
+    @classmethod
+    def resolve_and_check(cls, path, valid_check, ts):
+        module_path = Path(sys.modules[ts.__module__].__file__).parent
+        abs_path = (module_path / path).resolve()
+        if not valid_check(abs_path):
+            raise IOError(f'Cannot find {abs_path}')
+        return abs_path

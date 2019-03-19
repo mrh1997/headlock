@@ -1,13 +1,15 @@
 import contextlib
 import sys
-import os
 from pathlib import Path
-from unittest.mock import patch, Mock, MagicMock, call, ANY
+from unittest.mock import patch, Mock, call
 import pytest
 
 from .helpers import build_tree
 from headlock.testsetup import TestSetup, MethodNotMockedError, \
-    BuildError, CompileError, CModuleDecoratorBase, CModule, TransUnit
+    BuildError, CompileError, CModule
+from headlock.buildsys_drvs.mingw import get_default_builddesc_cls
+from headlock.buildsys_drvs.gcc import GccBuildDescription, \
+    Gcc32BuildDescription
 import headlock.c_data_model as cdm
 
 
@@ -72,127 +74,40 @@ class TestCompileError:
         assert list(exc) == errlist
 
 
-class TestCModuleDecoratorBase:
-
-    def test_call_onCls_returnsDerivedClassWithSameNameAndModule(self, TSDummy):
-        c_mod_decorator = CModuleDecoratorBase()
-        TSDecorated = c_mod_decorator(TSDummy)
-        assert issubclass(TSDecorated, TSDummy) \
-               and TSDecorated is not TSDummy
-        assert TSDecorated.__name__ == 'TSDummy'
-        assert TSDecorated.__qualname__ == 'Container.TSDummy'
-        assert TSDecorated.__module__ == 'testsetup_dummy'
-
-    def test_call_onCls_createsDerivedCls(self, TSDummy):
-        deco = CModuleDecoratorBase()
-        TSDerived = deco(TSDummy)
-        assert issubclass(TSDerived, TSDummy)
-
-    def test_call_onCls_callsExtendByTransUnit(self, TSDummy):
-        with patch.object(TSDummy, '__extend_by_transunit__'):
-            deco = CModuleDecoratorBase()
-            tu1, tu2 = Mock(), Mock()
-            deco.iter_transunits = Mock(return_value=iter([tu1, tu2]))
-            deco(TSDummy)
-            assert TSDummy.__extend_by_transunit__.call_args_list \
-                   == [call(tu1), call(tu2)]
-
-    def test_call_onCls_extendsLibrSearchParams(self, TSDummy):
-        with patch.object(TSDummy, '__extend_by_lib_search_params__'):
-            deco = CModuleDecoratorBase()
-            deco.iter_transunits = MagicMock()
-            deco.get_lib_search_params = Mock(return_value=([Path('dir')],
-                                                            ['lib']))
-            deco(TSDummy)
-            TSDummy.__extend_by_lib_search_params__.assert_called_once_with(
-                [Path('dir')], ['lib'])
-
-
-class TestCModule:
-
-    def test_iterTransunits_onRelSrcFilename_resolves(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'dir': {'src': b''}}) as base_dir:
-            c_mod = CModule('dir/src')
-            [transunit] = c_mod.iter_transunits(TSDummy)
-            assert transunit.abs_src_filename == base_dir / 'dir/src'
-
-    def test_iterTransunits_onAbsSrcFilename_resolves(self, tmpdir):
-        base_dir = build_tree(tmpdir, {'dir': {'src': b''}})
-        abs_path = str(base_dir /  'dir/src')
-        c_mod = CModule(abs_path)
-        [transunit] = c_mod.iter_transunits(TSDummy)
-        assert transunit.abs_src_filename == Path(abs_path)
-
-    class TSSubClass:
-        pass
-
-    def test_iterTransunits_setsSubsysName(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'t1.c': b'', 't2.c': b''}):
-            c_mod = CModule('t1.c', 't2.c')
-            [transunit, *_] = c_mod.iter_transunits(self.TSSubClass)
-            assert transunit.subsys_name == 't1'
-
-    def test_iterTransunits_retrievesAndResolvesIncludeDirs(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'src': b'', 'd1': {}, 'd2': {}}) \
-                as base_dir:
-            c_mod = CModule('src', include_dirs=['d1', 'd2'])
-            [transunit] = c_mod.iter_transunits(TSDummy)
-            assert transunit.abs_incl_dirs == [base_dir / 'd1', base_dir / 'd2']
-
-    def test_iterTransunits_createsOneUnitTestPerSrcFilename(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'t1.c': b'', 't2.c': b''}) as base_dir:
-            c_mod = CModule('t1.c', 't2.c')
-            assert [tu.abs_src_filename
-                    for tu in c_mod.iter_transunits(TSDummy)] \
-                    == [base_dir / 't1.c', base_dir / 't2.c']
-
-    def test_iterTransunits_onPredefMacros_passesMacrosToCompParams(self, tmpdir):
-        with sim_tsdummy_tree(tmpdir, {'src': b''}):
-            c_mod = CModule('src', MACRO1=11, MACRO2=22)
-            [transunit] = c_mod.iter_transunits(TSDummy)
-            assert transunit.predef_macros == {'MACRO1':11, 'MACRO2':22}
-
-    def test_iterTransunits_onInvalidPath_raiseIOError(self):
-        c_mod = CModule('test_invalid.c')
-        with pytest.raises(IOError):
-            list(c_mod.iter_transunits(TSDummy))
-
-    def test_getLibSearchParams_retrievesAndResolvesLibsDirs(self, tmpdir, TSDummy):
-        with sim_tsdummy_tree(tmpdir, {'src':b'', 'd1':{}, 'd2':{}}) \
-                as base_dir:
-            c_mod = CModule('src', library_dirs=['d1', 'd2'])
-            [_, lib_dirs] = c_mod.get_lib_search_params(TSDummy)
-            assert lib_dirs == [base_dir / 'd1', base_dir / 'd2']
-
-    def test_iterTransunits_retrievesRequiredLibs(self, tmpdir, TSDummy):
-        with sim_tsdummy_tree(tmpdir, {'src': b''}) as base_dir:
-            c_mod = CModule('src', required_libs=['lib1', 'lib2'])
-            [req_libs, _] = c_mod.get_lib_search_params(TSDummy)
-            assert req_libs == ['lib1', 'lib2']
-
-    def test_resolvePath_onRelativeFileAndRelativeModulePath_returnsAbsolutePath(self, TSDummy, tmpdir):
-        module = sys.modules[TSDummy.__module__]
-        with build_tree(tmpdir, {'file.py': b'', 'file.c': b''}) as dir:
-            os.chdir(dir)
-            with patch.object(module, '__file__', 'file.py'):
-                assert CModule.resolve_path('file.c', TSDummy) == dir / 'file.c'
-
-
 class TestTestSetup(object):
     """
     This is an integration test, that tests the testsetup class and the
     collaboration of the headlock components
     """
 
-    def extend_by_ccode(self, cls, src, filename, **macros):
-        sourcefile = (Path(__file__).parent / 'c_files' / filename).resolve()
-        sourcefile.write_bytes(src)
-        transunit = TransUnit('test_tu', sourcefile, [], macros)
-        cls.__extend_by_transunit__(transunit)
+    def abs_dir(self):
+        return (Path(__file__).parent / 'c_files').resolve()
 
-    def cls_from_ccode(self, src, filename, **macros):
-        class TSDummy(TestSetup): pass
-        self.extend_by_ccode(TSDummy, src, filename, **macros)
+    def extend_builddesc(self, builddesc:GccBuildDescription,
+                         source_code, filename):
+        abs_filename = self.abs_dir() / filename
+        abs_filename.write_bytes(source_code)
+        builddesc.add_c_source(abs_filename)
+
+    def create_builddesc(self, source_code, filename, *, unique_name=True,
+                         **macros):
+        builddesc_cls = get_default_builddesc_cls()
+        builddesc = builddesc_cls(Path(filename).name,
+                                  self.abs_dir() / (filename + '.build'),
+                                  unique_name)
+        builddesc.add_predef_macros(macros)
+        self.extend_builddesc(builddesc, source_code, filename)
+        return builddesc
+
+    def cls_from_ccode(self, src, filename,
+                       src_2=None, filename_2=None, **macros):
+        class TSDummy(TestSetup):
+            @classmethod
+            def __builddesc_factory__(cls):
+                builddesc = self.create_builddesc(src, filename, **macros)
+                if src_2 is not None:
+                    self.extend_builddesc(builddesc, src_2, filename_2)
+                return builddesc
         return TSDummy
 
     @pytest.fixture
@@ -200,67 +115,34 @@ class TestTestSetup(object):
         TSDummy = self.cls_from_ccode(b'', 'test.c')
         return TSDummy
 
-    def test_extendByTransunit_addsModulesToGetCModules(self):
-        class TSDummy(TestSetup):
-            __parser_factory__ = MagicMock()
-        transunits = [MagicMock(), MagicMock()]
-        TSDummy.__extend_by_transunit__(transunits[0])
-        TSDummy.__extend_by_transunit__(transunits[1])
-        assert TSDummy.__transunits__ == frozenset(transunits)
+    class TSBuildDescFactory(TestSetup): pass
 
-    def test_extendByTransunit_doesNotModifyParentCls(self):
-        transunits = [MagicMock(), MagicMock()]
-        class TSParent(TestSetup):
-            __parser_factory__ = MagicMock()
-        TSParent.__extend_by_transunit__(transunits[0])
-        class TSChild(TSParent):
-            pass
-        TSChild.__extend_by_transunit__(transunits[1])
-        assert list(TSParent.__transunits__) == transunits[:1]
-        assert TSChild.__transunits__ == set(transunits[:2])
+    def test_builddescFactory_returnsBuildDescWithGlobalBuildDirAndName(self):
+        builddesc = self.TSBuildDescFactory.__builddesc_factory__()
+        assert builddesc.name == 'TSBuildDescFactory.TestTestSetup'
+        assert builddesc.build_dir \
+               == Path(__file__).parent.resolve() / \
+                    '.headlock/test_testsetup' / builddesc.name
 
-    def test_extendByTransunit_onInvalidSourceCode_raisesCompileErrorDuringParsing(self):
-        with pytest.raises(CompileError) as comp_err:
-            self.cls_from_ccode(b'#error invalid c src', 'compile_err.c')
-        assert len(comp_err.value.errors) == 1
-        assert comp_err.value.path.name == 'compile_err.c'
+    def test_builddescFactory_onLocalTestSetupDefinition_returnsBuildDescWithHashInBuilDir(self):
+        class TSBuildDescFactory(TestSetup): pass
+        builddesc = TSBuildDescFactory.__builddesc_factory__()
+        int(builddesc.build_dir.name[-8:], 16)   # expect hexnumber at the end
+        assert builddesc.build_dir.name[-9] == '_'
 
-    def test_getTsAbspath_returnsAbsPathOfFile(self):
-        TSDummy = self.cls_from_ccode(b'', 'test.c')
-        assert TSDummy.get_ts_abspath() == Path(__file__).resolve()
+    def test_builddescFactory_onDynamicGeneratedTSClsWithSameParams_returnsBuildDescWithSameBuildDir(self):
+        builddesc1 = self.create_builddesc(b'', 'test.c', unique_name=False,
+                                           MACRO=1)
+        builddesc2 = self.create_builddesc(b'', 'test.c', unique_name=False,
+                                           MACRO=1)
+        assert builddesc1.build_dir == builddesc2.build_dir
 
-    def test_getSrcDir_returnsAbsDirOfFile(self):
-        TSDummy = self.cls_from_ccode(b'', 'test.c')
-        assert TSDummy.get_src_dir() == Path(__file__).resolve().parent
-
-    class TSEmpty(TestSetup):
-        __transunits__ = frozenset([
-            TransUnit('empty', Path(__file__, 'c_files/empty.c'), [], {})])
-
-    def test_getTsName_onStaticTSCls_returnsReversedQualifiedClassName(self):
-        assert self.TSEmpty.get_ts_name() == 'TSEmpty.TestTestSetup'
-
-    def test_getTsName_onDynamicGeneratedTSCls_returnsReversedQualifiedClassNameAndUid(self):
-        TSDummy = self.cls_from_ccode(b'', 'test.c')
-        assert TSDummy.get_ts_name()[:-8] \
-               == 'TSDummy.cls_from_ccode.TestTestSetup_'
-        int(str(TSDummy.get_ts_name())[-8:], 16)  # expect hexnumber at the end
-
-    def test_getTsName_onDynamicGeneratedTSClsWithSameParams_returnsSameStr(self):
-        TSDummy1 = self.cls_from_ccode(b'', 'test.c', MACRO=1)
-        TSDummy2 = self.cls_from_ccode(b'', 'test.c', MACRO=1)
-        assert TSDummy1.get_ts_name() == TSDummy2.get_ts_name()
-
-    def test_getTsName_onDynamicGeneratedTSClsWithDifferentParams_returnsDifferentStr(self):
-        TSDummy1 = self.cls_from_ccode(b'', 'test.c', A=1, B=222, C=3)
-        TSDummy2 = self.cls_from_ccode(b'', 'test.c', A=1, B=2, C=3)
-        assert TSDummy1.get_ts_name() != TSDummy2.get_ts_name()
-
-    def test_getBuildDir_returnsCorrectPath(self, ts_dummy):
-        this_file = Path(__file__).resolve()
-        assert ts_dummy.get_build_dir() \
-               == this_file.parent / TestSetup._BUILD_DIR_ / this_file.stem \
-                  / ts_dummy.get_ts_name()
+    def test_builddescFactory_onDynamicGeneratedTSClsWithDifferentParams_returnsBuildDescWithDifferentBuildDir(self):
+        builddesc1 = self.create_builddesc(b'', 'test.c', unique_name=False,
+                                           A=1, B=222, C=3)
+        builddesc2 = self.create_builddesc(b'', 'test.c', unique_name=False,
+                                           A=1, B=2, C=3)
+        assert builddesc1.build_dir != builddesc2.build_dir
 
     def test_macroWrapper_ok(self):
         TS = self.cls_from_ccode(b'#define MACRONAME   123', 'macro.c')
@@ -308,6 +190,12 @@ class TestTestSetup(object):
         __startup__.assert_not_called()
         ts.__unload__()
 
+    def test_build_onMultipleFilesWithReferences_ok(self):
+        TSMock = self.cls_from_ccode(
+            b'void callee(void) { return; }', 'prev.c',
+            b'void callee(void); void caller(void) { callee(); }', 'refprev.c')
+        TSMock()
+
     def test_build_onPredefinedMacros_passesMacrosToCompiler(self):
         TSMock = self.cls_from_ccode(b'int a = A;\n'
                                      b'int b = B 22;\n'
@@ -321,41 +209,20 @@ class TestTestSetup(object):
             assert ts.b.val == 22
             assert ts.c.val == 33
 
-    def test_build_onExtendByLibsSearchParams_passesMergedLibsAndSearchDirectories(self):
-        class TSChkLibDirs(TestSetup):
-            __TOOLCHAIN__ = Mock()
-            __load__ = __unload__ = Mock()
-        TSChkLibDirs.__extend_by_lib_search_params__(['lib1'], [Path('dir1')], )
-        TSChkLibDirs.__extend_by_lib_search_params__(['lib2'], [Path('dir2')])
-        ts = TSChkLibDirs()
-        TSChkLibDirs.__TOOLCHAIN__.build.assert_called_once_with(
-            ANY, ANY, ANY, ['lib1', 'lib2'], [Path('dir1'), Path('dir2')])
-
-    def test_build_onExtendByLibsSearchParams_doesNotModifyParentCls(self):
-        class TSChkLibDirs(TestSetup):
-            __TOOLCHAIN__ = Mock()
-            __load__ = __unload__ = Mock()
-        class TSChkLibDirsChild(TSChkLibDirs):
-            pass
-        TSChkLibDirsChild.__extend_by_lib_search_params__(['l'], [Path('d')])
-        TSChkLibDirs()
-        TSChkLibDirs.__TOOLCHAIN__.build.assert_called_once_with(
-            ANY, ANY, ANY, [], [])
-
     @patch('headlock.testsetup.TestSetup.__shutdown__')
     def test_unload_onStarted_callsShutdown(self, __shutdown__):
         TS = self.cls_from_ccode(b'int var;', 'unload_calls_shutdown.c')
         ts = TS()
         ts.__startup__()
         ts.__unload__()
-        ts.__shutdown__.assert_called_once()
+        __shutdown__.assert_called_once()
 
     @patch('headlock.testsetup.TestSetup.__shutdown__')
     def test_unload_onNotStarted_doesNotCallsShutdown(self, __shutdown__):
         TS = self.cls_from_ccode(b'int var;', 'unload_calls_shutdown.c')
         ts = TS()
         ts.__unload__()
-        ts.__shutdown__.assert_not_called()
+        __shutdown__.assert_not_called()
 
     def test_unload_calledTwice_ignoresSecondCall(self):
         TS = self.cls_from_ccode(b'', 'unload_run_twice.c')
@@ -507,7 +374,10 @@ class TestTestSetup(object):
     def test_mockFuncWrapper_ok(self):
         class TSMock(TestSetup):
             func_mock = Mock(return_value=33)
-        self.extend_by_ccode(TSMock, b'int func(int * a, int * b);', 'mocked.c')
+            @classmethod
+            def __builddesc_factory__(cls):
+                return self.create_builddesc(
+                    b'int func(int * a, int * b);', 'mocked.c')
         with TSMock() as ts:
             assert ts.func(11, 22) == 33
             TSMock.func_mock.assert_called_with(ts.int.ptr(11), ts.int.ptr(22))
@@ -515,8 +385,10 @@ class TestTestSetup(object):
     def test_mockFuncWrapper_onNotExistingMockFunc_forwardsToMockFallbackFunc(self):
         class TSMock(TestSetup):
             mock_fallback = Mock(return_value=33)
-        self.extend_by_ccode(TSMock, b'int func(int * a, int * b);',
-                             'mocked_func_fallback.c')
+            @classmethod
+            def __builddesc_factory__(cls):
+                return self.create_builddesc(b'int func(int * a, int * b);',
+                                             'mocked_func_fallback.c')
         with TSMock() as ts:
             assert ts.func(11, 22) == 33
             TSMock.mock_fallback.assert_called_with('func', ts.int.ptr(11),
@@ -525,10 +397,13 @@ class TestTestSetup(object):
     def test_mockFuncWrapper_createsCWrapperCode(self):
         class TSMock(TestSetup):
             mocked_func_mock = Mock(return_value=22)
-        self.extend_by_ccode(TSMock, b'int mocked_func(int p);'
-                                     b'int func(int p) { '
-                                     b'   return mocked_func(p); }',
-                             'mocked_func_cwrapper.c')
+            @classmethod
+            def __builddesc_factory__(cls):
+                return self.create_builddesc(
+                    b'int mocked_func(int p);'
+                    b'int func(int p) { '
+                    b'   return mocked_func(p); }',
+                    'mocked_func_cwrapper.c')
         with TSMock() as ts:
             assert ts.func(11) == 22
             TSMock.mocked_func_mock.assert_called_once_with(11)
@@ -540,30 +415,6 @@ class TestTestSetup(object):
             with pytest.raises(MethodNotMockedError) as excinfo:
                 assert ts.mock_fallback('unmocked_func', 11, 22)
             assert "unmocked_func" in str(excinfo.value)
-
-    def test_mockFuncWrapper_onRefersToPrevTransUnit_isGenerated(self):
-        TSMock = self.cls_from_ccode(b'void callee(void) { return; }',
-                                     'prev.c')
-        self.extend_by_ccode(TSMock, b'void callee(void); '
-                                     b'void caller(void) { callee(); }',
-                             'refprev.c')
-        TSMock()
-
-    def test_mockFuncWrapper_onRefersToNextTransUnit_isGenerated(self):
-        TSMock = self.cls_from_ccode(b'void callee(void);'
-                                     b'void caller(void) { callee(); }',
-                                     'refnext.c')
-        self.extend_by_ccode(TSMock, b'void callee(void) { return; }',
-                             'next.c')
-        TSMock()
-
-    def test_mockFunc_onLastTransUnitDoesNotReferToMocks_isGenerated(self):
-        TSMock = self.cls_from_ccode(b'void mock(void);'
-                                     b'void func1(void) { mock(); }',
-                                     'first_with_mock.c')
-        self.extend_by_ccode(TSMock, b'void func2(void) { return; }',
-                             'last_with_no_refererence_to_mock.c')
-        TSMock()
 
     def test_typedefWrapper_storesTypeDefInTypedefCls(self):
         TSMock = self.cls_from_ccode(b'typedef int td_t;', 'typedef.c')
@@ -635,42 +486,19 @@ class TestTestSetup(object):
         with TSMock() as ts:
             assert isinstance(ts.enum.enum_t, cdm.CEnumType)
 
-    def test_onTestSetupComposedOfDifferentCModules_parseAndCompileCModulesIndependently(self):
-        class TSDummy(TestSetup): pass
-        self.extend_by_ccode(TSDummy, b'#if defined(A)\n'
-                                      b'#error A not allowed\n'
-                                      b'#endif\n'
-                                      b'extern int a;'
-                                      b'int b = B;',
-                             'diff_params_mod_b.c',
-                             B=2)
-        self.extend_by_ccode(TSDummy, b'#if defined(B)\n'
-                                      b'#error B not allowed\n'
-                                      b'#endif\n'
-                                      b'int a = A;'
-                                      b'extern int b;',
-                             'diff_params_mod_a.c',
-                             A=1)
-        with TSDummy() as ts:
-            assert ts.a.val == 1
-            assert ts.b.val == 2
-
     def test_onSameStructWithAnonymousChildInDifferentModules_generateCorrectMockWrapper(self):
-        class TSDummy(TestSetup): pass
-        self.extend_by_ccode(TSDummy, b'struct s { struct { int mm; } m; };\n'
-                                      b'int func1(struct s p);\n',
-                             'anonymstruct_mod1.c')
-        self.extend_by_ccode(TSDummy, b'struct s { struct { int mm; } m; };\n'
-                                      b'int func2(struct s p);\n',
-                             'anonymstruct_mod2.c')
+        TSDummy = self.cls_from_ccode(
+            b'struct s { struct { int mm; } m; };\n'
+            b'int func1(struct s p);\n', 'anonymstruct_mod1.c',
+            b'struct s { struct { int mm; } m; };\n'
+            b'int func2(struct s p);\n', 'anonymstruct_mod2.c')
         with TSDummy() as ts:
             pass
 
     def test_onPointerToArrayOfStruct_generatesCorrectMockWrapper(self):
-        class TSDummy(TestSetup): pass
-        self.extend_by_ccode(TSDummy, b'typedef struct strct {} (*type)[1];\n'
+        TSDummy = self.cls_from_ccode(b'typedef struct strct {} (*type)[1];\n'
                                       b'void func(type param);',
-                             'ptr_to_arr_of_strct.c')
+                                      'ptr_to_arr_of_strct.c')
         with TSDummy() as ts:
             pass
 
@@ -710,68 +538,82 @@ class TestTestSetup(object):
         with TSDummy() as ts:
             assert '__cdecl' in ts.cdecl_func.ctype.__c_attribs__
 
-    def test_subclassing_addsAttributesToDerivedClassButDoesNotModifyParentClass(self):
-        TSDummy = self.cls_from_ccode(b'int func(void);\n'
-                                      b'int var;\n'
-                                      b'struct strct {};\n'
-                                      b'typedef int typedf;',
-                                      'parentcls.c')
-        class TSDummy2(TSDummy): pass
-        self.extend_by_ccode(TSDummy2, b'int func2(void);\n'
-                                       b'int var2;\n'
-                                       b'struct strct2 {};\n'
-                                       b'typedef int typedf2;',
-                             'derivedcls.c')
-        with TSDummy() as ts:
-            assert all(hasattr(ts, attr) for attr in ('func', 'var', 'typedf'))
-            assert not any(hasattr(ts, attr)
-                           for attr in ('func2', 'var2', 'typedf2'))
-            assert hasattr(ts.struct, 'strct')
-            assert not hasattr(ts.struct, 'strct2')
-        with TSDummy2() as ts:
-            assert all(hasattr(ts, attr)
-                       for attr in ('func', 'var', 'typedf',
-                                    'func2', 'var2', 'typedf2'))
-            assert hasattr(ts.struct, 'strct')
-            assert hasattr(ts.struct, 'strct2')
 
-    def test_subclassing_onChildClsImplementsMockedMethodFromParentCls_ok(self):
-        TSDummy = self.cls_from_ccode(b'int impl_by_subclass_func(void);\n'
-                                      b'int not_impl_func(void);',
-                                      'mocked_parentcls.c')
-        class TSDummy2(TSDummy): pass
-        self.extend_by_ccode(TSDummy2,
-                             b'int impl_by_subclass_func(void) { return 2; }',
-                             'impl_derivedcls.c')
-        with TSDummy() as ts:
-            with pytest.raises(MethodNotMockedError):
-                ts.impl_by_subclass_func()
-        with TSDummy2() as ts:
-            assert ts.impl_by_subclass_func() == 2
-            with pytest.raises(MethodNotMockedError):
-                ts.not_impl_func()
+class TestCModule:
 
-    def test_subclassing_onMultipleInheritance_mergesBaseClsItems(self):
-        TSParent1 = self.cls_from_ccode(b'void func1(void) { return; }\n'
-                                        b'void mock1(void);\n'
-                                        b'struct strct1 {};\n'
-                                        b'enum enm1 { a };\n'
-                                        b'int var1;\n'
-                                        b'#define MACRO1\n',
-                                        'base1.c')
-        TSParent2 = self.cls_from_ccode(b'void func2(void) { return; }\n'
-                                        b'void mock2(void);\n'
-                                        b'struct strct2 {};\n'
-                                        b'enum enm2 { a };\n'
-                                        b'int var2;\n'
-                                        b'#define MACRO2\n',
-                                        'base2.c')
-        class TSMerged(TSParent1, TSParent2):
-            pass
-        with TSMerged() as ts:
-            assert hasattr(ts, 'func1') and hasattr(ts, 'func2')
-            assert hasattr(ts, 'mock1') and hasattr(ts, 'mock2')
-            assert hasattr(ts, 'var1') and hasattr(ts, 'var2')
-            assert hasattr(ts, 'MACRO1') and hasattr(ts, 'MACRO2')
-            assert hasattr(ts.struct, 'strct1') and hasattr(ts.struct, 'strct2')
-            assert hasattr(ts.enum, 'enm1') and hasattr(ts.enum, 'enm2')
+    def test_call_onBuildDescFactoryAvailableCls_raisesTypeError(self):
+        class NonTSCls: pass
+        cmod = CModule()
+        with pytest.raises(TypeError):
+            cmod(NonTSCls)
+
+    class BuilddescFactoryImplemented:
+        @classmethod
+        def __builddesc_factory__(cls):
+            return Gcc32BuildDescription('', Path(''))
+
+    def test_call_onBuilddescFactoryImplemented_raisesTypeError(self):
+        class BuilddescFactoryImplemented:
+            @classmethod
+            def __builddesc_factory__(cls):
+                return Gcc32BuildDescription('', Path(''))
+        cmod = CModule()
+        with pytest.raises(TypeError):
+            cmod(BuilddescFactoryImplemented)
+
+    @patch.object(Path, 'is_file', return_value=True)
+    def test_call_onSrcPath_derivesBuilddescFactoryToAddAbsSrcPath(self, is_file):
+        @CModule('rel_src.c')
+        class TSRelSrc(self.BuilddescFactoryImplemented): pass
+        builddesc = TSRelSrc.__builddesc_factory__()
+        abs_c_src = Path(__file__).resolve().parent / 'rel_src.c'
+        assert builddesc.c_sources() == [abs_c_src]
+        is_file.assert_called_with(abs_c_src)
+
+    @patch.object(Path, 'is_file', return_value=False)
+    def test_call_onInvalidSrcPath_raisesOSError(self, is_file):
+        @CModule('rel_src.c')
+        class TSInvalidSrc(self.BuilddescFactoryImplemented): pass
+        with pytest.raises(OSError):
+            TSInvalidSrc.__builddesc_factory__()
+
+    @patch.object(Path, 'is_file', return_value=True)
+    def test_call_onPredefMacros_derivsBuilddescFactoryToAddPredefMacros(self, is_file):
+        @CModule('src.c', MACRO1=1, MACRO2='')
+        class TSPredefMacros(self.BuilddescFactoryImplemented): pass
+        builddesc = TSPredefMacros.__builddesc_factory__()
+        abs_c_src = Path(__file__).resolve().parent / 'src.c'
+        assert builddesc.predef_macros() \
+               == {abs_c_src: dict(MACRO1='1', MACRO2='')}
+
+    @patch.object(Path, 'is_file', return_value=True)
+    @patch.object(Path, 'is_dir', return_value=True)
+    def test_call_onInclOrLibDir_derivesBuilddescFactoryToSetAbsDirPath(self, is_dir, is_file):
+        @CModule('src.c', include_dirs=['rel/dir'])
+        class TSRelDir(self.BuilddescFactoryImplemented): pass
+        builddesc = TSRelDir.__builddesc_factory__()
+        abs_src = Path(__file__).resolve().parent / 'src.c'
+        abs_path = Path(__file__).resolve().parent / 'rel/dir'
+        assert builddesc.incl_dirs() == {abs_src: [abs_path]}
+        is_dir.assert_called_with(abs_path)
+
+    @patch.object(Path, 'is_file', return_value=True)
+    @patch.object(Path, 'is_dir', return_value=False)
+    @pytest.mark.parametrize('dir_name', ['library_dirs', 'include_dirs'])
+    def test_call_onInvalidInclOrLibDir_raisesOSError(self, is_dir, is_file, dir_name):
+        @CModule('src.c', **{dir_name: 'invalid/dir'})
+        class TSInvalidDir(self.BuilddescFactoryImplemented): pass
+        with pytest.raises(OSError):
+            TSInvalidDir.__builddesc_factory__()
+
+    @patch.object(Path, 'is_file', return_value=True)
+    def test_call_onDerivedClass_doesNotModifyBaseClassesBuildDesc(self, is_file):
+        @CModule('src_base.c')
+        class TSBase(self.BuilddescFactoryImplemented): pass
+        @CModule('src_derived.c')
+        class TSDerived(TSBase): pass
+        builddesc_base = TSBase.__builddesc_factory__()
+        builddesc_derived = TSDerived.__builddesc_factory__()
+        assert {p.name for p in builddesc_base.c_sources()} == {'src_base.c'}
+        assert {p.name for p in builddesc_derived.c_sources()} \
+               == {'src_base.c', 'src_derived.c'}

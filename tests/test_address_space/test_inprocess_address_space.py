@@ -1,11 +1,11 @@
 import pytest
 import ctypes as ct
 from headlock.address_space.inprocess import InprocessAddressSpace
-from headlock.toolchains import TransUnit
 from pathlib import Path
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock
+from headlock.buildsys_drvs.mingw import get_default_builddesc_cls
 
 
 MAX_C2PY_BRIDGE_INSTANCES = 4
@@ -22,25 +22,13 @@ def bridge_src(bridge_array=None, py2c_retval='1'):
         b'}\n'
         b'void (* _c2py_bridge_handler)'
                             b'(int, int, unsigned char *, unsigned char *);\n'
-        b'void (* _c2py_bridge_[][' + max_bridge_inst_str + b'])(void) = {\n' +
+        b'typedef void (* _c2py_bridge_t)(void);\n'
+        b'_c2py_bridge_t _c2py_bridge_[][' + max_bridge_inst_str + b'] = {\n' +
         b''.join(
-            b'\t{ ' + b', '.join(str(v).encode('ascii') for v in insts) +b'},\n'
+            b'\t{ ' + b', '.join(b'(_c2py_bridge_t) ' + str(v).encode('ascii')
+                                 for v in insts) +b'},\n'
             for insts in bridge_array) +
         b'};')
-
-def create_tool_chain():
-    import sys, platform
-    if sys.platform == 'win32':
-        if platform.architecture()[0] == '32bit':
-            from headlock.toolchains.mingw import MinGW32ToolChain as ToolChain
-        else:
-            from headlock.toolchains.mingw import MinGW64ToolChain as ToolChain
-    else:
-        if platform.architecture()[0] == '32bit':
-            from headlock.toolchains.gcc import Gcc32ToolChain as ToolChain
-        else:
-            from headlock.toolchains.gcc import Gcc64ToolChain as ToolChain
-    return ToolChain()
 
 @contextmanager
 def addrspace_for(content):
@@ -48,11 +36,11 @@ def addrspace_for(content):
         dummy_dll_dir = Path(tempdir)
         c_file = Path(dummy_dll_dir) / 'source.c'
         c_file.write_bytes(content)
-        tool_chain = create_tool_chain()
-        trans_unit = TransUnit('dummy', c_file)
-        tool_chain.build('dummy', dummy_dll_dir, [trans_unit], [], [])
+        builddesc_cls = get_default_builddesc_cls()
+        builddesc = builddesc_cls('dummy', dummy_dll_dir)
+        builddesc.build([c_file])
         addrspace = InprocessAddressSpace(
-            str(tool_chain.exe_path('dummy', dummy_dll_dir)),
+            str(builddesc.exe_path()),
             {f'py2c_sigid{ndx}': ndx for ndx in range(MAX_SIG_CNT)},
             {f'c2py_sigid{ndx}': ndx for ndx in range(MAX_SIG_CNT)},
             MAX_C2PY_BRIDGE_INSTANCES)
@@ -110,8 +98,10 @@ def test_invokeCCode_onBridgeReturnsFalse_raisesValueError():
             inproc_addrspace.invoke_c_code(0, 'py2c_sigid0', 0, 0)
 
 def test_invokeCCode_onBridgeReturnsTrue_passesAllParameters():
-    src = bridge_src(py2c_retval='bridge_ndx == 2 && (int) func_ptr == 123 && '
-                                 '(int) params == 456 && (int) retval == 789')
+    src = bridge_src(py2c_retval='bridge_ndx == 2 && '
+                                 '(void*) func_ptr == (void*) 123 && '
+                                 '(void*) params == (void*) 456 && '
+                                 '(void*) retval == (void*) 789')
     with addrspace_for(src) as inproc_addrspace:
         inproc_addrspace.invoke_c_code(123, 'py2c_sigid2', 456, 789)
 

@@ -1,33 +1,48 @@
 from pathlib import Path
-import winreg
+import sys
+import platform
 import itertools
 import fnmatch
+from typing import List, Dict, Any
+try:
+    import winreg
+except ImportError:
+    pass
 
-from . import BuildError
-from .gcc import GccToolChain
+from . import BuildError, gcc
 
 
 BUILD_CACHE = set()
 
 
-class MinGWToolChain(GccToolChain):
+class MinGWBuildDescription(gcc.GccBuildDescription):
 
     ADDITIONAL_COMPILE_OPTIONS = []
     ADDITIONAL_LINK_OPTIONS = ['-static-libgcc', '-static-libstdc++']
 
     ARCHITECTURE:str = None
 
-    def __init__(self, version=None, thread_model=None,
-                 exception_model=None, rev=None, mingw_install_dir=None):
-        super().__init__()
+    def __init__(self, name, build_dir, unique_name=True, *,
+                 c_sources:List[Path]=None, predef_macros:Dict[str, Any]=None,
+                 incl_dirs:List[Path]=None, lib_dirs:List[Path]=None,
+                 req_libs:List[str]=None, version:str=None,
+                 thread_model:str=None, exception_model:str=None, rev:str=None,
+                 mingw_install_dir:Path=None):
         if mingw_install_dir is None:
+            arch, plat, compiler = self.clang_target().split('-')
             self.mingw_install_dir = self._autodetect_mingw_dir(
-                version, thread_model, exception_model, rev)
+                version, thread_model, exception_model, rev)  / compiler
         else:
             self.mingw_install_dir = mingw_install_dir
-        self.gcc_executable = str(self.mingw_install_dir / 'bin' / 'gcc')
+        gcc_executable = str(self.mingw_install_dir / 'bin' / 'gcc')
+        super().__init__(
+            name, build_dir, unique_name,
+            c_sources=c_sources, predef_macros=predef_macros,
+            incl_dirs=incl_dirs, lib_dirs=lib_dirs, req_libs=req_libs,
+            gcc_executable=gcc_executable)
 
-    def _autodetect_mingw_dir(self,version, thread_model, exception_model, rev):
+    @classmethod
+    def _autodetect_mingw_dir(cls, version, thread_model, exception_model, rev):
         def iter_uninstall_progkeys():
             for uninstall_regkey in [r"SOFTWARE\WOW6432Node\Microsoft\Windows"
                                         r"\CurrentVersion\Uninstall",
@@ -45,7 +60,7 @@ class MinGWToolChain(GccToolChain):
                                                 subkey_name) as subkey:
                                 yield subkey_name, subkey
 
-        mingw_filter = f"{self.ARCHITECTURE}-{version or '*'}" \
+        mingw_filter = f"{cls.ARCHITECTURE}-{version or '*'}" \
                        f"-{thread_model or '*'}-{exception_model or '*'}" \
                        f"-*-{rev or '*'}"
         mingw_install_dirs = {}
@@ -70,9 +85,7 @@ class MinGWToolChain(GccToolChain):
                 f'Requested MinGW Version ({mingw_filter}) was not found '
                 f'on this system')
         _, mingw_install_dir = max(mingw_install_dirs.items())
-
-        arch, plat, compiler = self.CLANG_TARGET.split('-')
-        return mingw_install_dir / compiler
+        return mingw_install_dir
 
     def sys_incl_dirs(self):
         ext_incl_dir_base = self.mingw_install_dir \
@@ -82,11 +95,28 @@ class MinGWToolChain(GccToolChain):
                + list(ext_incl_dir_base.glob('*.*.*/include'))[:1]
 
 
-class MinGW32ToolChain(MinGWToolChain):
-    CLANG_TARGET = 'i386-pc-mingw32'
+class MinGW32BuildDescription(MinGWBuildDescription):
     ARCHITECTURE = 'i686'
+    def clang_target(self):
+        return 'i386-pc-mingw32'
 
 
-class MinGW64ToolChain(MinGWToolChain):
-    CLANG_TARGET = 'x86_64-pc-mingw64'
+class MinGW64BuildDescription(MinGWBuildDescription):
     ARCHITECTURE = 'x86_64'
+    def clang_target(self):
+        return 'x86_64-pc-mingw64'
+
+
+def get_default_builddesc_cls():
+    if sys.platform == 'win32':
+        if platform.architecture()[0] == '32bit':
+            return MinGW32BuildDescription
+        else:
+            return MinGW64BuildDescription
+    elif sys.platform == 'linux':
+        if platform.architecture()[0] == '32bit':
+            return gcc.Gcc32BuildDescription
+        else:
+            return gcc.Gcc64BuildDescription
+    else:
+        raise NotImplementedError('This OS is not supported')

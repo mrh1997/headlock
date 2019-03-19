@@ -22,7 +22,7 @@ setup(
               'headlock.c_data_model',
               'headlock.integrations.pytest',
               'headlock.libclang',
-              'headlock.toolchains'],
+              'headlock.buildsys_drvs'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Operating System :: Microsoft :: Windows',

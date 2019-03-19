@@ -20,9 +20,9 @@ from .common import PYTEST_HEADLOCK_DIR
 
 
 if platform.architecture()[0] == '32bit':
-    from headlock.toolchains.mingw import MinGW32ToolChain as MinGWxxToolChain
+    from headlock.buildsys_drvs.mingw import MinGW32BuildDescription as MinGWxxToolChain
 else:
-    from headlock.toolchains.mingw import MinGW64ToolChain as MinGWxxToolChain
+    from headlock.buildsys_drvs.mingw import MinGW64BuildDescription as MinGWxxToolChain
 
 
 class DummyToolChain(MinGWxxToolChain):
