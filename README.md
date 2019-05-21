@@ -1,6 +1,6 @@
 # Headlock - Python/C Bridge for Unittesting
 
-<!-- [![buildstate](https://api.travis-ci.com/mrh1997/headlock.svg?branch=master "Build State")](https://travis-ci.com/mrh1997/headlock) -->
+[![buildstate](https://api.travis-ci.com/mrh1997/headlock.svg?branch=master "Build State")](https://travis-ci.com/mrh1997/headlock)
 [![docstate](https://readthedocs.org/projects/headlock/badge/?version=latest "Documentation Generation State")](https://headlock.readthedocs.io/en/latest/)
 
 ## About

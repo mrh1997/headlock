@@ -7,8 +7,7 @@ Current Status Of Development
 .. image:: https://readthedocs.org/projects/headlock/badge/?version=stable
    :alt: Documentation Generation Status
 
-..
-    image:: https://api.travis-ci.com/mrh1997/headlock.svg?branch=master
+.. image:: https://api.travis-ci.com/mrh1997/headlock.svg?branch=master
    :target: https://travis-ci.com/mrh1997/headlock
 
 .. attention::
@@ -22,7 +21,6 @@ is shown in the following list:
 
  * Works only on Windows
  * Requires MingW64 Toolchain
- * Works only with 32bit Python
  * Requires LLVM
  * Does not support specifying packing of structures in C sources
    (``#pragma pack``).

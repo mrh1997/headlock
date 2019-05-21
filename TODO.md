@@ -3,12 +3,6 @@ Interface changing
  * subtracting pointers returns int instead of CInt
  * implicit add zero element to .alloc_ptr(...) and .ptr on iterables
  * travis integration + pip deployment automatisieren bei tag
- * rework datamodel:
-   - replace all proxies by a single class that refers to a memory
-     location and a type object.
-   - All methods of the proxies are forwarded to the C type specific
-     type object.
-   - the type object is "bound" to a "environment"
  * refactor PtrArrFactoryMixIn into factory object
  * .sizeof and .offsetof() shall be available at runtime only and
    done by the compiler (seems to be compiler dependent)
