@@ -1,10 +1,7 @@
 import pytest
-import ctypes as ct
-from unittest.mock import Mock
 
 from headlock.address_space.virtual import VirtualAddressSpace
 from headlock.c_data_model.memory_access import CMemory, WriteProtectError
-import headlock.c_data_model as cdm
 
 
 class TestCMemory:

@@ -1,6 +1,4 @@
-import ctypes as ct
 import pytest
-import sys
 import headlock.c_data_model as cdm
 from headlock.address_space.virtual import VirtualAddressSpace
 

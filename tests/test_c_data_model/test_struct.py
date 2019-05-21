@@ -1,6 +1,5 @@
 import pytest
 import re
-import ctypes as ct
 from unittest.mock import patch
 
 import headlock.c_data_model as cdm

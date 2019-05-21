@@ -1,4 +1,3 @@
-import collections
 from platform import architecture
 from typing import Dict
 import ctypes as ct

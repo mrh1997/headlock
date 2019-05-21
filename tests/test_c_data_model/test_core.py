@@ -274,15 +274,15 @@ class TestCProxy:
 
     def test_init_setsAttributes(self, ctype, addrspace):
         adr = addrspace.alloc_memory(10)
-        bound_ctypes = ctype.bind(addrspace)
-        cproxy = cdm.CProxy(bound_ctypes, adr)
-        assert cproxy.ctype is bound_ctypes
+        bound_ctype = ctype.bind(addrspace)
+        cproxy = cdm.CProxy(bound_ctype, adr)
+        assert cproxy.ctype is bound_ctype
         assert cproxy.__address__ == adr
 
     def test_init_onManagedMemoryBlocks(self, ctype, addrspace):
         adr = addrspace.alloc_memory(10)
-        bound_ctypes = ctype.bind(addrspace)
-        cproxy = cdm.CProxy(bound_ctypes, adr)
+        bound_ctype = ctype.bind(addrspace)
+        cproxy = cdm.CProxy(bound_ctype, adr)
 
     @pytest.fixture
     def cobj(self, ctype, addrspace):

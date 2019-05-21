@@ -3,8 +3,8 @@ from .core import CProxyType, CProxy
 class CFloatType(CProxyType):
     """This is a dummy yet"""
 
-    def __init__(self, c_name, bits, ctypes_type):
-        super().__init__(None, ctypes_type)
+    def __init__(self, c_name, bits):
+        super().__init__(bits//8)
         self.bits = bits
         self.c_name = c_name
 

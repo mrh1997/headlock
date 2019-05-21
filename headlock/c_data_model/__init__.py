@@ -121,11 +121,11 @@ class BuildInDefs:
     signed_char = CIntType('signed char', 8, False, ENDIANESS)
     unsigned_char = CIntType('unsigned char', 8, False, ENDIANESS)
 
-    float = CFloatType('float', 32, ctypes_type=ct.c_float)
+    float = CFloatType('float', 32)
 
-    double = CFloatType('double', 64, ctypes_type=ct.c_double)
+    double = CFloatType('double', 64)
 
-    long_double = CFloatType('long double', 80, ctypes_type=ct.c_longdouble)
+    long_double = CFloatType('long double', 80)
 
     _Bool = CIntType('_Bool', 8, False, ENDIANESS)
 
