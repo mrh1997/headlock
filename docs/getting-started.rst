@@ -11,16 +11,13 @@ thus have to be installed before using it.
 Currently it is only explicitly tested  with the minimal version requirements.
 Higher versions should work nevertheless.
 
- * Windows (Linux/Mac are :ref:`not supported yet <dev-status>`)
+ * Windows or Linux are required
  * `CPython 3 <https://www.python.org/downloads/release>`_
    Version 3.6 or higher is required 
-   (Currently 64bit is :ref:`not supported <dev-status>`!)
- * `LLVM <http://releases.llvm.org/download.html>`_ (Version 4.0.1 or higher).
-   32bit Version is currently required and has to be installed to
-   (Later this requirement shall :ref:`be optional <dev-status>`!)
-   ``C:\Program Files (x86)\LLVM``
- * `MinGW64 <http://mingw-w64.org/doku.php/download/mingw-builds>`_
-   (Later other C compilers shall :ref:`be supported <dev-status>`!)
+ * `LLVM <http://releases.llvm.org/download.html>`_ (Version 7.0.0 or higher).
+ * GCC is required (in case of Windows
+   `MinGW64 <http://mingw-w64.org/doku.php/download/mingw-builds>`_ is needed).
+   Later other C compilers shall :ref:`be supported <dev-status>`!
 
 
 
