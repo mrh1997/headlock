@@ -32,12 +32,6 @@ class CProxyType:
         bound_obj.__addrspace__ = addrspace
         return bound_obj
 
-    def __get__(self, instance, owner):
-        if instance is None:
-            return self
-        else:
-            return self.bind(instance.__addrspace__)
-
     def convert_to_c_repr(self, py_val:Any) -> bytes:
         """
         This method converts a python object to a bytes object that matches

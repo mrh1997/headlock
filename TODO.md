@@ -10,6 +10,10 @@ Interface changing
 
 Small (can be done by occassion)
 --------------------------------
+* CProxyDescriptor returns a CProxyType object, if the containing
+  testsetup is not instantiated yet. This is confusing behaviour, as
+  sometimes is returned a CProxy and sometimes a CProxyType
+  How could a more consistent behaviour be designedﬂ
 * Add multi-threading support to exception forwarding
 * Replace .base_type by .ref_type (ptr) and .element_type (array)
 * add "ts.unsigned" and "ts.signed" (to support casts like "((unsigned) (x))")
@@ -81,9 +85,7 @@ Small (can be done by occassion)
   its later implementation does not work.
 * rename .ptr to .def_ptr and .array() to .def_array().
   Then remove .alloc_ptr() and rename .alloc_array() to .array
-  (i.e. ts.uint8_t.array(b'test')). alloc_ptr() is done implicitly when
-  passing the array to a pointer or can be done explicitly by
-  .array(...).adr
+  (i.e. ts.uint8_t.array(b'test')). alloc_ptr() is replaced by array() then.
   Maybe even rename .ref to .ptr then?!?
 * Add ts.def_funcptr() to allow using function pointers even if no
   typedef is available in C (CFuncPointerType could be used, but is

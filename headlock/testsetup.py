@@ -33,9 +33,26 @@ class MethodNotMockedError(Exception):
     pass
 
 
-class GlobalCProxyDescriptor:
+class CProxyTypeDescriptor:
     """
-    This internal class provides descriptors for global CProxy objects.
+    This internal class provides descriptors for CProxyType objects contained
+    by TestSetups.
+    """
+
+    def __init__(self, ctype:CProxyType):
+        self.ctype = ctype
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self.ctype
+        else:
+            return self.ctype.bind(instance.__addrspace__)
+
+
+class CProxyDescriptor:
+    """
+    This internal class provides descriptors for CProxy objects containted by
+    TestSetups.
     If the testsetup is instantiated, they return a CProxy object.
     Otherwise they return the corresponding CProxyType
     """
@@ -138,21 +155,23 @@ class TestSetup(BuildInDefs):
                 if isinstance(subtype, CFuncPointerType)})
 
             for name, ctype in parser.funcs.items():
-                descr = GlobalCProxyDescriptor(name, ctype)
-                setattr(cls, name, descr)
+                cfunc_descr = CProxyDescriptor(name, ctype)
+                setattr(cls, name, cfunc_descr)
             for name, ctype in parser.vars.items():
-                descr = GlobalCProxyDescriptor(name, ctype)
-                setattr(cls, name, descr)
+                cglobal_descr = CProxyDescriptor(name, ctype)
+                setattr(cls, name, cglobal_descr)
             for name, typedef in parser.typedefs.items():
                 if isinstance(typedef, CStructType) \
                     and typedef.is_anonymous_struct():
                     typedef.struct_name = '__anonymousfromtypedef__' + name
-                setattr(cls, name, typedef)
+                cstruct_descr = CProxyTypeDescriptor(typedef)
+                setattr(cls, name, cstruct_descr)
             for name, typedef in parser.structs.items():
+                typedef_descr = CProxyTypeDescriptor(typedef)
                 if isinstance(typedef, CStructType):
-                    setattr(cls.struct, typedef.struct_name, typedef)
+                    setattr(cls.struct, typedef.struct_name, typedef_descr)
                 elif isinstance(typedef, CEnumType):
-                    setattr(cls.enum, name, typedef)
+                    setattr(cls.enum, name, typedef_descr)
             for name, macro_def in parser.macros.items():
                 setattr(cls, name, macro_def)
 

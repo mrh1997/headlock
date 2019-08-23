@@ -51,15 +51,6 @@ class TestCProxyType:
         bound_ctype = ctype.bind(addrspace)
         assert bound_ctype.bind(addrspace) is bound_ctype
 
-    def test_descriptor_onContainingObject_bindsToParentsAddressSpaceAttribute(self, ctype):
-        ctype.bind = Mock()
-        class Dummy:
-            attr = ctype
-        dummy_obj = Dummy()
-        dummy_obj.__addrspace__ = Mock()
-        assert dummy_obj.attr is ctype.bind.return_value
-        ctype.bind.assert_called_once_with(dummy_obj.__addrspace__)
-
     def test_descriptor_onContainingClass_returnsSelf(self, ctype):
         class Dummy:
             attr = ctype
