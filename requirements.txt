@@ -1,9 +1,0 @@
-tox
-# testdiscovery does not work with pytest 3.7+ (dont know why)
-pytest==3.6
-# pytest-pycharm does not work with pluggy 0.8+
-pluggy==0.6.0
-pytest-pycharm
-setuptools
-twine
-.
