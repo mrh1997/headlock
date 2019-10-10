@@ -101,19 +101,16 @@ class TestTestSetup(object):
 
     def cls_from_ccode(self, src, filename,
                        src_2=None, filename_2=None, **macros):
-        class TSDummy(TestSetup):
-            @classmethod
-            def __builddesc_factory__(cls):
-                builddesc = self.create_builddesc(src, filename, **macros)
-                if src_2 is not None:
-                    self.extend_builddesc(builddesc, src_2, filename_2)
-                return builddesc
+        builddesc = self.create_builddesc(src, filename, **macros)
+        if src_2 is not None:
+            self.extend_builddesc(builddesc, src_2, filename_2)
+        class TSDummy(TestSetup): pass
+        TSDummy.__set_builddesc__(builddesc)
         return TSDummy
 
     @pytest.fixture
     def ts_dummy(self):
-        TSDummy = self.cls_from_ccode(b'', 'test.c')
-        return TSDummy
+        return self.cls_from_ccode(b'', 'test.c')
 
     class TSBuildDescFactory(TestSetup): pass
 
@@ -365,48 +362,30 @@ class TestTestSetup(object):
             ts.var.val = 11
             assert ts.var.val == 11
 
+    def test_mockFuncWrapper_createsCWrapperCode(self):
+        TSMock = self.cls_from_ccode(
+            b'int mocked_func(int p);'
+            b'int func(int p) { return mocked_func(p) + 33; }',
+            'mocked_func_cwrapper.c')
+        with TSMock() as ts:
+            ts.mocked_func_mock = Mock(return_value=22)
+            assert ts.func(11) == 22 + 33
+            ts.mocked_func_mock.assert_called_once_with(11)
+
     def test_headerFileOnly_createsMockOnly(self):
         TSMock = self.cls_from_ccode(b'int func();', 'header.h')
         with TSMock() as ts:
             ts.func_mock = Mock(return_value=123)
-            assert ts.func() == 123
-
-    def test_mockFuncWrapper_ok(self):
-        class TSMock(TestSetup):
-            func_mock = Mock(return_value=33)
-            @classmethod
-            def __builddesc_factory__(cls):
-                return self.create_builddesc(
-                    b'int func(int * a, int * b);', 'mocked.c')
-        with TSMock() as ts:
-            assert ts.func(11, 22) == 33
-            TSMock.func_mock.assert_called_with(ts.int.ptr(11), ts.int.ptr(22))
+            assert ts.func().val == 123
 
     def test_mockFuncWrapper_onNotExistingMockFunc_forwardsToMockFallbackFunc(self):
-        class TSMock(TestSetup):
-            mock_fallback = Mock(return_value=33)
-            @classmethod
-            def __builddesc_factory__(cls):
-                return self.create_builddesc(b'int func(int * a, int * b);',
-                                             'mocked_func_fallback.c')
+        TSMock = self.cls_from_ccode(b'int func(int * a, int * b);',
+                                     'mocked_func_fallback.c')
         with TSMock() as ts:
+            ts.mock_fallback = Mock(return_value=33)
             assert ts.func(11, 22) == 33
-            TSMock.mock_fallback.assert_called_with('func', ts.int.ptr(11),
-                                                    ts.int.ptr(22))
-
-    def test_mockFuncWrapper_createsCWrapperCode(self):
-        class TSMock(TestSetup):
-            mocked_func_mock = Mock(return_value=22)
-            @classmethod
-            def __builddesc_factory__(cls):
-                return self.create_builddesc(
-                    b'int mocked_func(int p);'
-                    b'int func(int p) { '
-                    b'   return mocked_func(p); }',
-                    'mocked_func_cwrapper.c')
-        with TSMock() as ts:
-            assert ts.func(11) == 22
-            TSMock.mocked_func_mock.assert_called_once_with(11)
+            ts.mock_fallback.assert_called_with('func', ts.int.ptr(11),
+                                                ts.int.ptr(22))
 
     def test_mockFuncWrapper_onUnmockedFunc_raisesMethodNotMockedError(self):
         TSMock = self.cls_from_ccode(b'void unmocked_func();',
@@ -541,79 +520,62 @@ class TestTestSetup(object):
 
 class TestCModule:
 
-    def test_call_onBuildDescFactoryAvailableCls_raisesTypeError(self):
-        class NonTSCls: pass
-        cmod = CModule()
-        with pytest.raises(TypeError):
-            cmod(NonTSCls)
-
-    class BuilddescFactoryImplemented:
+    class TestSetupMock:
+        __builddesc__ = None
         @classmethod
         def __builddesc_factory__(cls):
             return Gcc32BuildDescription('', Path(''))
-
-    def test_call_onBuilddescFactoryImplemented_raisesTypeError(self):
-        class BuilddescFactoryImplemented:
-            @classmethod
-            def __builddesc_factory__(cls):
-                return Gcc32BuildDescription('', Path(''))
-        cmod = CModule()
-        with pytest.raises(TypeError):
-            cmod(BuilddescFactoryImplemented)
+        @classmethod
+        def __set_builddesc__(cls, builddesc):
+            cls.__builddesc__ = builddesc
 
     @patch.object(Path, 'is_file', return_value=True)
     def test_call_onSrcPath_derivesBuilddescFactoryToAddAbsSrcPath(self, is_file):
         @CModule('rel_src.c')
-        class TSRelSrc(self.BuilddescFactoryImplemented): pass
-        builddesc = TSRelSrc.__builddesc_factory__()
+        class TSRelSrc(self.TestSetupMock): pass
         abs_c_src = Path(__file__).resolve().parent / 'rel_src.c'
-        assert builddesc.c_sources() == [abs_c_src]
+        assert TSRelSrc.__builddesc__.c_sources() == [abs_c_src]
         is_file.assert_called_with(abs_c_src)
 
     @patch.object(Path, 'is_file', return_value=False)
     def test_call_onInvalidSrcPath_raisesOSError(self, is_file):
-        @CModule('rel_src.c')
-        class TSInvalidSrc(self.BuilddescFactoryImplemented): pass
         with pytest.raises(OSError):
-            TSInvalidSrc.__builddesc_factory__()
+            @CModule('rel_src.c')
+            class TSInvalidSrc(self.TestSetupMock): pass
 
     @patch.object(Path, 'is_file', return_value=True)
     def test_call_onPredefMacros_derivsBuilddescFactoryToAddPredefMacros(self, is_file):
         @CModule('src.c', MACRO1=1, MACRO2='')
-        class TSPredefMacros(self.BuilddescFactoryImplemented): pass
-        builddesc = TSPredefMacros.__builddesc_factory__()
+        class TSPredefMacros(self.TestSetupMock): pass
         abs_c_src = Path(__file__).resolve().parent / 'src.c'
-        assert builddesc.predef_macros() \
+        assert TSPredefMacros.__builddesc__.predef_macros() \
                == {abs_c_src: dict(MACRO1='1', MACRO2='')}
 
     @patch.object(Path, 'is_file', return_value=True)
     @patch.object(Path, 'is_dir', return_value=True)
     def test_call_onInclOrLibDir_derivesBuilddescFactoryToSetAbsDirPath(self, is_dir, is_file):
         @CModule('src.c', include_dirs=['rel/dir'])
-        class TSRelDir(self.BuilddescFactoryImplemented): pass
-        builddesc = TSRelDir.__builddesc_factory__()
+        class TSRelDir(self.TestSetupMock): pass
         abs_src = Path(__file__).resolve().parent / 'src.c'
         abs_path = Path(__file__).resolve().parent / 'rel/dir'
-        assert builddesc.incl_dirs() == {abs_src: [abs_path]}
+        assert TSRelDir.__builddesc__.incl_dirs() == {abs_src: [abs_path]}
         is_dir.assert_called_with(abs_path)
 
     @patch.object(Path, 'is_file', return_value=True)
     @patch.object(Path, 'is_dir', return_value=False)
     @pytest.mark.parametrize('dir_name', ['library_dirs', 'include_dirs'])
     def test_call_onInvalidInclOrLibDir_raisesOSError(self, is_dir, is_file, dir_name):
-        @CModule('src.c', **{dir_name: 'invalid/dir'})
-        class TSInvalidDir(self.BuilddescFactoryImplemented): pass
         with pytest.raises(OSError):
-            TSInvalidDir.__builddesc_factory__()
+            @CModule('src.c', **{dir_name: 'invalid/dir'})
+            class TSInvalidDir(self.TestSetupMock): pass
 
     @patch.object(Path, 'is_file', return_value=True)
     def test_call_onDerivedClass_doesNotModifyBaseClassesBuildDesc(self, is_file):
         @CModule('src_base.c')
-        class TSBase(self.BuilddescFactoryImplemented): pass
+        class TSBase(self.TestSetupMock): pass
         @CModule('src_derived.c')
         class TSDerived(TSBase): pass
-        builddesc_base = TSBase.__builddesc_factory__()
-        builddesc_derived = TSDerived.__builddesc_factory__()
-        assert {p.name for p in builddesc_base.c_sources()} == {'src_base.c'}
-        assert {p.name for p in builddesc_derived.c_sources()} \
+        assert {p.name for p in TSBase.__builddesc__.c_sources()} \
+               == {'src_base.c'}
+        assert {p.name for p in TSDerived.__builddesc__.c_sources()} \
                == {'src_base.c', 'src_derived.c'}

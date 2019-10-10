@@ -103,11 +103,6 @@ class TestSetup(BuildInDefs):
 
     ### provide structs with packing 1
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls.__builddesc__ = cls.__builddesc_factory__()
-        cls.__add_c_interface__(cls.__builddesc__)
-
     @classmethod
     def __builddesc_factory__(cls) -> BuildDescription:
         # This is a preliminary workaround until there is a clean solution on
@@ -125,7 +120,8 @@ class TestSetup(BuildInDefs):
                              unique_name='.<locals>.' not in cls.__qualname__)
 
     @classmethod
-    def __add_c_interface__(cls, builddesc:BuildDescription):
+    def __set_builddesc__(cls, builddesc:BuildDescription):
+        cls.__builddesc__ = builddesc
         cls.__globals = {}
         cls.__implementations = set()
         cls.__required_funcptrs = {}
@@ -323,33 +319,23 @@ class CModule:
             self.predef_macros.update(predef_macros)
 
     def __call__(self, ts):
-        @classmethod
-        def __builddesc_factory__(cls):
-            builddesc = super(ts, cls).__builddesc_factory__()
-            if not isinstance(builddesc, gcc.GccBuildDescription):
-                raise ValueError('currently only GCC based BuildDescriptions '
-                                 'are allowed')
-            for c_src in self.src_filenames:
-                abs_c_src = self.resolve_and_check(c_src, Path.is_file, ts)
-                builddesc.add_c_source(abs_c_src)
-            for incl_dir in self.include_dirs:
-                abs_incl_dir = self.resolve_and_check(incl_dir, Path.is_dir, ts)
-                builddesc.add_incl_dir(abs_incl_dir)
-            for lib_dir in self.library_dirs:
-                abs_lib_dir = self.resolve_and_check(lib_dir, Path.is_dir, ts)
-                builddesc.add_lib_dir(abs_lib_dir)
-            for req_lib in self.required_libs:
-                builddesc.add_req_lib(req_lib)
-            builddesc.add_predef_macros(self.predef_macros)
-            return builddesc
-        if not hasattr(ts, '__builddesc_factory__'):
-            raise TypeError('CModule can only decorate classes that are '
-                            'derived from classes that provide '
-                            '"__builddesc_factory__" method')
-        if '__builddesc_factory__' in ts.__dict__:
-            raise TypeError('CModule cannot be used for classes that overwrite '
-                            '"__builddesc_factory__" explicitly.')
-        ts.__builddesc_factory__ = __builddesc_factory__
+        if ts.__builddesc__ is None:
+            builddesc = ts.__builddesc_factory__()
+        else:
+            builddesc = ts.__builddesc__.copy()
+        for c_src in self.src_filenames:
+            abs_c_src = self.resolve_and_check(c_src, Path.is_file, ts)
+            builddesc.add_c_source(abs_c_src)
+        for incl_dir in self.include_dirs:
+            abs_incl_dir = self.resolve_and_check(incl_dir, Path.is_dir, ts)
+            builddesc.add_incl_dir(abs_incl_dir)
+        for lib_dir in self.library_dirs:
+            abs_lib_dir = self.resolve_and_check(lib_dir, Path.is_dir, ts)
+            builddesc.add_lib_dir(abs_lib_dir)
+        for req_lib in self.required_libs:
+            builddesc.add_req_lib(req_lib)
+        builddesc.add_predef_macros(self.predef_macros)
+        ts.__set_builddesc__(builddesc)
         return ts
 
     @classmethod

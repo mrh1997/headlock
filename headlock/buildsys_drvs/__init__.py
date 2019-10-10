@@ -3,6 +3,7 @@ import hashlib
 import os
 from pathlib import Path
 from typing import List, Dict
+import copy
 
 
 class BuildError(Exception):
@@ -108,3 +109,6 @@ class BuildDescription:
         Returns True, if this is a header file
         """
         return src_path.suffix.lower() == '.h'
+
+    def copy(self):
+        return copy.deepcopy(self)
