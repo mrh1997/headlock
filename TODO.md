@@ -10,6 +10,9 @@ Interface changing
 
 Small (can be done by occassion)
 --------------------------------
+* Guarantee that access to internal structs is provided. 
+  Currently it may happen that during merging the parse results of multiple 
+  C files the struct definition wins, which contains no member definition. 
 * Create new type of CStruct for every instance  of CStructType, which contains
   descriptors for member access (see TestSetup.CProxyDescriptor). This will
   prevent accitientially writing structmembers via "ts.struct.x.y = 3"

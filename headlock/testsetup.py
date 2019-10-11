@@ -73,7 +73,7 @@ class CProxyDescriptor:
         raise AttributeError("Can't set CProxyType")
 
 
-class StructUnionEnumCTypeCollection:
+class CompoundTypeNamespace:
     def __init__(self, addrspace:AddressSpace):
         self.__addrspace__ = addrspace
 
@@ -86,7 +86,7 @@ SYS_WHITELIST = [
 
 class TestSetup(BuildInDefs):
 
-    class struct(StructUnionEnumCTypeCollection): pass
+    struct = CompoundTypeNamespace
     union = struct
     enum = struct
 
@@ -130,6 +130,7 @@ class TestSetup(BuildInDefs):
         cls.__globals = {}
         cls.__implementations = set()
         cls.__required_funcptrs = {}
+        compound_ns = {}
         for c_src in builddesc.c_sources():
             predef_macros = builddesc.sys_predef_macros()
             predef_macros.update(builddesc.predef_macros()[c_src])
@@ -170,11 +171,13 @@ class TestSetup(BuildInDefs):
             for name, typedef in parser.structs.items():
                 typedef_descr = CProxyTypeDescriptor(typedef)
                 if isinstance(typedef, CStructType):
-                    setattr(cls.struct, typedef.struct_name, typedef_descr)
+                    compound_ns[typedef.struct_name] = typedef_descr
                 elif isinstance(typedef, CEnumType):
-                    setattr(cls.enum, name, typedef_descr)
+                    compound_ns[name] = typedef_descr
             for name, macro_def in parser.macros.items():
                 setattr(cls, name, macro_def)
+        cls.struct = cls.enum = cls.union = \
+            type('CompoundTypeNamespace', (CompoundTypeNamespace,), compound_ns)
 
     def __init__(self):
         super(TestSetup, self).__init__()

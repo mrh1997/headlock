@@ -536,6 +536,12 @@ class TestTestSetup(object):
         with TSDummy() as ts:
             pass
 
+    def test_onTwoTestsetups_haveDifferentStructCollections(self):
+        TS1 = self.cls_from_ccode(b'struct s { int a; };', 'struct1.c')
+        TS2 = self.cls_from_ccode(b'struct s { int b; };', 'struct2.c')
+        assert hasattr(TS1.struct.s, 'a')
+        assert hasattr(TS2.struct.s, 'b')
+
     def test_registerUnloadEvent_onRegisteredEvent_isCalledOnUnload(self):
         TSDummy = self.cls_from_ccode(b'', 'test_register_unload_ev.c')
         ts = TSDummy()
