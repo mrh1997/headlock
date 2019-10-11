@@ -88,7 +88,7 @@ class CFuncType(CProxyType):
             next_param_adr = params_adr
             params = []
             for arg_type in arg_types:
-                params.append(arg_type.create_cproxy_for(next_param_adr))
+                params.append(arg_type.create_cproxy_for(next_param_adr).copy())
                 next_param_adr += arg_type.sizeof
             try:
                 if logger:

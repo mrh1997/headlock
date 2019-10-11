@@ -416,6 +416,17 @@ class TestTestSetup(object):
             assert ts.func(11) == 22 + 33
             ts.mocked_func_mock.assert_called_once_with(11)
 
+    def test_mockFuncWrapper_onOverwriteStack_keepsCProxyVal(self):
+        TSMock = self.cls_from_ccode(
+            b'void f(int val);\n'
+            b'void call_3_times(void) { f(1111); f(2222); f(3333); return; }',
+            'multicalled_mock.c')
+        with TSMock() as ts:
+            call_params = []
+            ts.f_mock = lambda param: call_params.append(param)
+            ts.call_3_times()
+            assert call_params == [1111, 2222, 3333]
+
     def test_headerFileOnly_createsMockOnly(self):
         TSMock = self.cls_from_ccode(b'int func();', 'header.h')
         with TSMock() as ts:
