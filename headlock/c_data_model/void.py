@@ -14,6 +14,9 @@ class CVoidType(CProxyType):
             result += ' ' + refering_def
         return result
 
+    def __repr__(self):
+        return 'ts.void'
+
 
 class CVoid(CProxy):
     pass

@@ -10,6 +10,9 @@ Interface changing
 
 Small (can be done by occassion)
 --------------------------------
+* Create new type of CStruct for every instance  of CStructType, which contains
+  descriptors for member access (see TestSetup.CProxyDescriptor). This will
+  prevent accitientially writing structmembers via "ts.struct.x.y = 3"
 * CProxyDescriptor returns a CProxyType object, if the containing
   testsetup is not instantiated yet. This is confusing behaviour, as
   sometimes is returned a CProxy and sometimes a CProxyType
@@ -32,8 +35,6 @@ Small (can be done by occassion)
 * add repr function to CObjTypes
 * enums/floats are not supported yet
 * Option to make warnings to errors (can only be done if cdecl warning can be moved away)
-* Add ``__set__()`` to CObj type which throws error to ensures that 
-  ``ts.global = 3`` or ``ts.struct.x.y = 3`` fails
 * Replace _global_refs_ dictionary by option during creation of object.
   When settings this option the element is not freed until destruction
   of testsetup
@@ -81,13 +82,15 @@ Small (can be done by occassion)
   Attention: "ts.array == [1,2,3]" should still work (see above entry)
 * declaring a function as static in advance and omitting "static" in
   its later implementation does not work.
-* rename .ptr to .def_ptr and .array() to .def_array().
-  Then remove .alloc_ptr() and rename .alloc_array() to .array
-  (i.e. ts.uint8_t.array(b'test')). alloc_ptr() is replaced by array() then.
-  Maybe even rename .ref to .ptr then?!?
-* Add ts.def_funcptr() to allow using function pointers even if no
+* simplify API:
+    * .adr -> .ptr
+    * .ref -> .at
+    * .alloc_ptr(9) -> .ptr(alloc=9)
+    * .alloc_ptr(b'abc') -> .ptr(b'abc')
+    * .alloc_array(9) -> .array(alloc=9)
+* Add ts.funcptr() to allow using function pointers even if no
   typedef is available in C (CFuncPointerType could be used, but is
-  inconsistent, as all other types are derivable via def_...).
+  inconsistent, as all other types are derivable via .ptr/.array).
 * introduce define, that can be used to check if headlock is active
 * ptrtype.base_type is not intuitive. Maybe ptrtype.ref would be better?
   or at least sth like ".pointee"
