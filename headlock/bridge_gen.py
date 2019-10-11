@@ -3,6 +3,7 @@ This module provides the code to generate the bridge code.
 """
 from .c_data_model import CStructType, CFuncType, CPointerType, \
     CFuncPointerType, CIntType, CProxyType
+import itertools
 from typing import TextIO, Dict, Iterable
 
 
@@ -75,9 +76,11 @@ def write_c2py_bridge(output:TextIO, required_funcptrs:Iterable[CFuncType],
                     f'= (void *) 0;\n'
         f'\n')
     bridge_ndxs = {}
-    for bridge_ndx, cfunc in enumerate(required_funcptrs):
+    bridge_ndx_ctr = itertools.count()
+    for cfunc in required_funcptrs:
         sig_id = cfunc.sig_id
         if sig_id not in bridge_ndxs:
+            bridge_ndx = next(bridge_ndx_ctr)
             bridge_ndxs[sig_id] = bridge_ndx
             for instance_ndx in range(max_instances):
                 write_c2py_bridge_func(output, bridge_ndx, instance_ndx, cfunc)
