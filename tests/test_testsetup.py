@@ -6,7 +6,7 @@ import pytest
 
 from .helpers import build_tree
 from headlock.testsetup import TestSetup, MethodNotMockedError, \
-    BuildError, CompileError, CModule
+    CProxyDescriptor, CProxyTypeDescriptor, BuildError, CompileError, CModule
 from headlock.buildsys_drvs.mingw import get_default_builddesc_cls
 from headlock.buildsys_drvs.gcc import GccBuildDescription, \
     Gcc32BuildDescription
@@ -72,6 +72,50 @@ class TestCompileError:
         errlist = [('err 1', 'file1.c', 3), ('err 2', 'file2.h', 3)]
         exc = CompileError(errlist)
         assert list(exc) == errlist
+
+
+class TestCProxyTypeDescriptor:
+
+    @pytest.fixture
+    def Dummy(self):
+        class Dummy:
+            attr = CProxyTypeDescriptor(cdm.BuildInDefs.int)
+        return Dummy
+
+    def test_get_onClass_returnsCProxyType(self, Dummy):
+        assert Dummy.attr is cdm.BuildInDefs.int
+
+    def test_get_onInstance_returnsCProxyWithAddrspace(self, Dummy):
+        dummy = Dummy()
+        dummy.__addrspace__ = Mock()
+        assert isinstance(dummy.attr, cdm.CIntType)
+        assert dummy.attr.__addrspace__ == dummy.__addrspace__
+
+    def test_set_onInstance_raisesAttributeError(self, Dummy):
+        with pytest.raises(AttributeError):
+            Dummy().attr = 99
+
+
+class TestCProxyDescriptor:
+
+    @pytest.fixture
+    def Dummy(self):
+        class Dummy:
+            attr = CProxyDescriptor("attr", cdm.BuildInDefs.int)
+        return Dummy
+
+    def test_get_onClass_returnsCProxyType(self, Dummy):
+        assert Dummy.attr is cdm.BuildInDefs.int
+
+    def test_get_onInstance_returnsCProxyWithAddrspace(self, Dummy):
+        dummy = Dummy()
+        dummy.__addrspace__ = Mock()
+        assert isinstance(dummy.attr, cdm.CInt)
+        assert dummy.attr.ctype.__addrspace__ == dummy.__addrspace__
+
+    def test_set_onInstance_raisesAttributeError(self, Dummy):
+        with pytest.raises(AttributeError):
+            Dummy().attr = 99
 
 
 class TestTestSetup(object):

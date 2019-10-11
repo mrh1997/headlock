@@ -45,6 +45,9 @@ class CProxyTypeDescriptor:
         else:
             return self.ctype.bind(instance.__addrspace__)
 
+    def __set__(self, instance, value):
+        raise AttributeError("Can't set CProxyType")
+
 
 class CProxyDescriptor:
     """
@@ -65,6 +68,9 @@ class CProxyDescriptor:
             addrspace = instance.__addrspace__
             sym_adr = addrspace.get_symbol_adr(self.name)
             return self.ctype.bind(addrspace).create_cproxy_for(sym_adr)
+
+    def __set__(self, instance, value):
+        raise AttributeError("Can't set CProxyType")
 
 
 class StructUnionEnumCTypeCollection:

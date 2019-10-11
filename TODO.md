@@ -51,8 +51,6 @@ Small (can be done by occassion)
   creating a testsetup in a playground gives reasonable error messages
 * move VarPtr and MemPtr from pytest-plugin to headlock as they are
   not pytest specific (but specific to unittest.mock or similar)
-* raise exception when writing a proxy without ".val". i.e.
-  "x.ref = 2"
 * raise error if detecting "__declspec(dllexport)" (does not work,
   but currently gives no obvious error message)
 * add cobj.copy() to allow quick and easy duplicating a C object.
