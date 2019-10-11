@@ -75,6 +75,7 @@ class TestCIntType:
         (cdm.CIntType('name', 32, False, 'little'), b'\x78\x56\x34\x12', 0x12345678),
         (cdm.CIntType('name', 16, False, 'little'), b'\x34\x12',         0x1234),
         (cdm.CIntType('name', 32, False, 'big'),    b'\x12\x34\x56\x78', 0x12345678),
+        (cdm.CIntType('name', 32, False, 'little'), b'\xFF\xFF\xFF\xFF', 0xFFFFFFFF),
         (cdm.CIntType('name', 32, True,  'little'), b'\xFF\xFF\xFF\xFF', -1),
         (cdm.CIntType('name', 8,  True,  'little'), b'\x80',             -128)])
     def test_convertFromCRepr_returnsCRepr(self, cint_type, c_repr, py_val):

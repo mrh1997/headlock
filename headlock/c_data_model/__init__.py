@@ -101,7 +101,7 @@ class BuildInDefs:
     signed_int = CIntType(
         'signed int', ct.sizeof(ct.c_int)*8, True, ENDIANESS)
     unsigned_int = CIntType(
-        'unsigned int', ct.sizeof(ct.c_uint)*8, True, ENDIANESS)
+        'unsigned int', ct.sizeof(ct.c_uint)*8, False, ENDIANESS)
 
     short = CIntType(
         'short', ct.sizeof(ct.c_short)*8, True, ENDIANESS)
@@ -115,10 +115,10 @@ class BuildInDefs:
     signed_long = CIntType(
         'signed long', ct.sizeof(ct.c_long)*8, True, ENDIANESS)
     unsigned_long = CIntType(
-        'unsigned long', ct.sizeof(ct.c_ulong)*8, True, ENDIANESS)
+        'unsigned long', ct.sizeof(ct.c_ulong)*8, False, ENDIANESS)
 
-    char = CIntType('char', 8, False, ENDIANESS)
-    signed_char = CIntType('signed char', 8, False, ENDIANESS)
+    char = CIntType('char', 8, True, ENDIANESS)
+    signed_char = CIntType('signed char', 8, True, ENDIANESS)
     unsigned_char = CIntType('unsigned char', 8, False, ENDIANESS)
 
     float = CFloatType('float', 32)
