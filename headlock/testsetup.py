@@ -15,9 +15,6 @@ from .buildsys_drvs import BuildDescription, BuildError, gcc, mingw
 from . import bridge_gen
 
 
-MAX_C2PY_BRIDGE_INSTANCES = 8
-
-
 class CompileError(BuildError):
 
     def __init__(self, errors, path=None):
@@ -102,6 +99,8 @@ class TestSetup(BuildInDefs):
     __library_directories = []
 
     ### provide structs with packing 1
+
+    MAX_C2PY_BRIDGE_INSTANCES = 8
 
     @classmethod
     def __builddesc_factory__(cls) -> BuildDescription:
@@ -213,7 +212,7 @@ class TestSetup(BuildInDefs):
                 (mock for mock in mocks.values()
                  if isinstance(mock, CFuncType)))
             self.__c2py_bridge_ndxs = bridge_gen.write_c2py_bridge(
-                output, c2py_funcs, MAX_C2PY_BRIDGE_INSTANCES)
+                output, c2py_funcs, self.MAX_C2PY_BRIDGE_INSTANCES)
 
     def __build__(self):
         if not self.__builddesc__.build_dir.exists():
@@ -224,10 +223,11 @@ class TestSetup(BuildInDefs):
 
     def __load__(self):
         exepath = self.__builddesc__.exe_path()
-        self.__addrspace__ = InprocessAddressSpace(os.fspath(exepath),
-                                                   self.__py2c_bridge_ndxs,
-                                                   self.__c2py_bridge_ndxs,
-                                                   MAX_C2PY_BRIDGE_INSTANCES)
+        self.__addrspace__ = InprocessAddressSpace(
+            os.fspath(exepath),
+            self.__py2c_bridge_ndxs,
+            self.__c2py_bridge_ndxs,
+            self.MAX_C2PY_BRIDGE_INSTANCES)
         self.struct = self.struct(self.__addrspace__)
         self.union = self.struct
         self.enum = self.struct

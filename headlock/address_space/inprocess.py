@@ -114,9 +114,13 @@ class InprocessAddressSpace(AddressSpace):
             inst_ndx = 1 + max([indx for bndx, indx in self.__c2py_pyfuncs
                                 if bndx == bridge_ndx],
                                default=-1)
-            if inst_ndx == self.__max_c2py_instances:
-                raise ValueError(f'Created too much C-to-Python Bridges for '
-                                 f'Signature {sig_id!r}')
+            max_inst = self.__max_c2py_instances
+            if inst_ndx == max_inst:
+                raise ValueError(
+                    f"Created too much C-to-Python Bridges for "
+                    f"Signature {sig_id!r}. Increase TestSetup's "
+                    f"MAX_C2PY_BRIDGE_INSTANCES (current value is "
+                    f"{max_inst})")
             self.__c2py_pyfuncs[bridge_ndx, inst_ndx] = pyfunc
             return self.__bridge_array[bridge_ndx][inst_ndx]
 
