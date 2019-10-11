@@ -51,7 +51,8 @@ def pytest_runtest_makereport(item, call):
         report_errors(exc, item.config.rootdir)
         firstlineno = 0 if not hasattr(item, 'function') \
                       else item.function.__code__.co_firstlineno
-        return TestReport(item.nodeid, (item.fspath, firstlineno, str(exc)),
+        return TestReport(item.nodeid,
+                          (str(item.fspath), firstlineno, str(exc)),
                           None, 'failed', None, call.when)
     if call.when == 'teardown' and stop_testing:
         pytest.exit(1)
