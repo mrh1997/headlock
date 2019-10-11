@@ -56,6 +56,12 @@ class TestCPointerType:
     def test_cDefinition_onPtrToPtr_returnsTwoStars(self, unbound_cint_type):
         assert unbound_cint_type.ptr.ptr.c_definition() == 'cint **'
 
+    def test_cDefinition_onPtrToArray_returnsParentethizedStar(self, unbound_cint_type):
+        assert unbound_cint_type.array(10).ptr.c_definition() == 'cint (*)[10]'
+
+    def test_cDefinition_onArrayOfPtrs_returnsUnParentethizedStar(self, unbound_cint_type):
+        assert unbound_cint_type.ptr.array(10).c_definition() == 'cint *[10]'
+
     def test_cDefinition_onRefDef_returnsCNameWithRefDef(self, unbound_cint_type):
         assert unbound_cint_type.ptr.c_definition('ab') == 'cint *ab'
 

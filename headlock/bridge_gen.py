@@ -120,8 +120,8 @@ def write_c2py_bridge_func(output, bridge_ndx, instance_ndx, cfunc):
 
 def write_params_ptrs(output, args, indent=''):
     for arg_ndx, arg_ctype in enumerate(args):
-        param_type = arg_ctype.c_definition('*')
-        param_def = arg_ctype.c_definition(f'* const pp{arg_ndx}')
+        param_type = arg_ctype.ptr.c_definition()
+        param_def =arg_ctype.ptr.with_attr('const').c_definition(f'pp{arg_ndx}')
         if arg_ndx == 0:
             output.write(f'{indent}{param_def} = ({param_type}) params;\n')
         else:
