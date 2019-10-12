@@ -12,7 +12,5 @@ addons:
     packages:
       - gcc
       - libclang1-7
-install:
-  - pip install -r requirements.txt
-script:
-  - pytest
+install: pip install tox-travis
+script: tox
