@@ -63,6 +63,11 @@ def test_writeMemory_modifiesDataAtAddress(inproc_addrspace):
     inproc_addrspace.write_memory(ct.addressof(buffer) + 1, b'ABC')
     assert buffer[:5] == b'\x00ABC\x00'
 
+def test_writeMemory_onBytearray_ok(inproc_addrspace):
+    buffer = ct.create_string_buffer(3)
+    inproc_addrspace.write_memory(ct.addressof(buffer), bytearray(b'ABC'))
+    assert buffer[:3] == b'ABC'
+
 def test_allocMemory_returnsInt(inproc_addrspace):
     adr = inproc_addrspace.alloc_memory(12345)
     assert inproc_addrspace.read_memory(adr, 12345) == b'\x00' * 12345

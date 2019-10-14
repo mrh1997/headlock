@@ -66,6 +66,8 @@ class InprocessAddressSpace(AddressSpace):
         return ct.string_at(address, length)
 
     def write_memory(self, address, data):
+        if isinstance(data, bytearray):
+            data = bytes(data)
         ct.memmove(address, ct.create_string_buffer(data), len(data))
 
     def alloc_memory(self, length:int) -> int:
