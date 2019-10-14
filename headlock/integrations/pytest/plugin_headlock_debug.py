@@ -18,7 +18,7 @@ stops with a crash (=no teardown executed)
 import os
 from pathlib import Path
 from collections import defaultdict
-from headlock.buildsys_drvs import mingw
+from headlock.buildsys_drvs import default
 from .common import PYTEST_HEADLOCK_DIR
 
 
@@ -110,7 +110,7 @@ def pytest_runtest_logreport(report):
         finish_test(report.nodeid, report.failed)
 
 
-class CMakeFileGenerator(mingw.get_default_builddesc_cls()):
+class CMakeFileGenerator(default.BUILDDESC_CLS):
 
     @staticmethod
     def escape(str):
@@ -136,7 +136,7 @@ class CMakeFileGenerator(mingw.get_default_builddesc_cls()):
                 rel_c_src_path = os.path.relpath(c_src, self.build_dir)
                 yield ' ' + rel_c_src_path.replace('\\', '/')
             yield ')\n'
-            predef_macros = self.predef_macros()[c_srcs[0]]
+            predef_macros = self.predef_macros().get(c_srcs[0], {})
             if predef_macros:
                 yield f'target_compile_definitions({lib_name} PUBLIC'
                 for mname, mval in predef_macros.items():
@@ -144,7 +144,7 @@ class CMakeFileGenerator(mingw.get_default_builddesc_cls()):
                     yield self.escape(mname +
                                       ('' if mval is None else f'={mval}'))
                 yield ')\n'
-            incl_dirs = self.incl_dirs()[c_srcs[0]]
+            incl_dirs = self.incl_dirs().get(c_srcs[0], [])
             if incl_dirs:
                 yield f'target_include_directories({lib_name} PUBLIC'
                 for incl_dir in incl_dirs:
@@ -223,4 +223,4 @@ class CMakeFileGenerator(mingw.get_default_builddesc_cls()):
         super().build(additonal_c_sources)
 
 
-mingw.get_default_builddesc_cls = lambda: CMakeFileGenerator
+default.BUILDDESC_CLS = CMakeFileGenerator

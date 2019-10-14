@@ -5,7 +5,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock
-from headlock.buildsys_drvs.mingw import get_default_builddesc_cls
+from headlock.buildsys_drvs.default import BUILDDESC_CLS
 
 
 MAX_C2PY_BRIDGE_INSTANCES = 4
@@ -36,8 +36,7 @@ def addrspace_for(content):
         dummy_dll_dir = Path(tempdir)
         c_file = Path(dummy_dll_dir) / 'source.c'
         c_file.write_bytes(content)
-        builddesc_cls = get_default_builddesc_cls()
-        builddesc = builddesc_cls('dummy', dummy_dll_dir)
+        builddesc = BUILDDESC_CLS('dummy', dummy_dll_dir)
         builddesc.build([c_file])
         addrspace = InprocessAddressSpace(
             str(builddesc.exe_path()),

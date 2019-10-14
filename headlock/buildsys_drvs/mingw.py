@@ -105,18 +105,3 @@ class MinGW64BuildDescription(MinGWBuildDescription):
     ARCHITECTURE = 'x86_64'
     def clang_target(self):
         return 'x86_64-pc-mingw64'
-
-
-def get_default_builddesc_cls():
-    if sys.platform == 'win32':
-        if platform.architecture()[0] == '32bit':
-            return MinGW32BuildDescription
-        else:
-            return MinGW64BuildDescription
-    elif sys.platform == 'linux':
-        if platform.architecture()[0] == '32bit':
-            return gcc.Gcc32BuildDescription
-        else:
-            return gcc.Gcc64BuildDescription
-    else:
-        raise NotImplementedError('This OS is not supported')

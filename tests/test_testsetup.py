@@ -7,7 +7,7 @@ import pytest
 from .helpers import build_tree
 from headlock.testsetup import TestSetup, MethodNotMockedError, \
     CProxyDescriptor, CProxyTypeDescriptor, BuildError, CompileError, CModule
-from headlock.buildsys_drvs.mingw import get_default_builddesc_cls
+from headlock.buildsys_drvs import default
 from headlock.buildsys_drvs.gcc import GccBuildDescription, \
     Gcc32BuildDescription
 import headlock.c_data_model as cdm
@@ -135,10 +135,10 @@ class TestTestSetup(object):
 
     def create_builddesc(self, source_code, filename, *, unique_name=True,
                          **macros):
-        builddesc_cls = get_default_builddesc_cls()
-        builddesc = builddesc_cls(Path(filename).name,
-                                  self.abs_dir() / (filename + '.build'),
-                                  unique_name)
+        builddesc = default.BUILDDESC_CLS(
+            Path(filename).name,
+            self.abs_dir() / (filename + '.build'),
+            unique_name)
         builddesc.add_predef_macros(macros)
         self.extend_builddesc(builddesc, source_code, filename)
         return builddesc

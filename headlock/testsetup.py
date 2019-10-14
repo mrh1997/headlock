@@ -2,7 +2,6 @@ import functools, itertools
 import os
 import sys
 import weakref
-import platform
 from typing import List, Dict, Any, Union, Set
 from pathlib import Path
 
@@ -11,7 +10,7 @@ from .c_data_model import BuildInDefs, CStructType, CEnumType, CFuncType, \
 from .address_space import AddressSpace
 from .address_space.inprocess import InprocessAddressSpace
 from .c_parser import CParser, ParseError
-from .buildsys_drvs import BuildDescription, BuildError, gcc, mingw
+from .buildsys_drvs import BuildDescription, BuildError, default
 from . import bridge_gen
 
 
@@ -112,7 +111,6 @@ class TestSetup(BuildInDefs):
     def __builddesc_factory__(cls) -> BuildDescription:
         # This is a preliminary workaround until there is a clean solution on
         # how to configure builddescs.
-        builddesc_cls = mingw.get_default_builddesc_cls()
         src_filename = sys.modules[cls.__module__].__file__
         ts_abspath = Path(src_filename).resolve()
         src_dir = ts_abspath.parent
@@ -121,8 +119,10 @@ class TestSetup(BuildInDefs):
         rev_static_qualname = '.'.join(reversed(shortend_name_parts))
         build_dir = src_dir / cls._BUILD_DIR_ / ts_abspath.stem \
                / rev_static_qualname
-        return builddesc_cls(rev_static_qualname, build_dir,
-                             unique_name='.<locals>.' not in cls.__qualname__)
+        return default.BUILDDESC_CLS(
+            rev_static_qualname,
+            build_dir,
+            unique_name='.<locals>.' not in cls.__qualname__)
 
     @classmethod
     def __set_builddesc__(cls, builddesc:BuildDescription):

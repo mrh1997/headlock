@@ -13,12 +13,12 @@ import sys
 from pathlib import Path
 
 import pytest
-from headlock.buildsys_drvs import mingw
+from headlock.buildsys_drvs import default
 
 from .common import PYTEST_HEADLOCK_DIR
 
 
-class DummyToolChain(mingw.get_default_builddesc_cls()):
+class DummyToolChain(default.BUILDDESC_CLS):
     """
     This toolchain is a placeholder for an actual toolchain.
     It is used for debugging, where the .DLL is build by the IDE and shall
@@ -45,7 +45,7 @@ def get_root_dir(root_dir=None):
 
 
 def main(cur_dir=None):
-    mingw.get_default_builddesc_cls = lambda: DummyToolChain
+    default.BUILDDESC_CLS = DummyToolChain
 
     print()
     print()
