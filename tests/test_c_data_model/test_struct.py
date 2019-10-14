@@ -52,12 +52,12 @@ class TestCStructType:
                 [('bound_to_different_addrspace', cint_type)],
                 addrspace=VirtualAddressSpace())
 
-    def test_getAlignment_returnsMaxAlignmentOfMembers(self, unbound_cint_type, unbound_cint16_type):
+    def test_getAlignment_returnsMaxAlignmentOfMembers(self, unbound_cint_type, unbound_cuint64_type):
         cstruct_type = cdm.CStructType(
             'strct_name',
             [('member_max', unbound_cint_type),
-             ('member', unbound_cint16_type)])
-        assert cstruct_type.alignment == unbound_cint_type.alignment
+             ('member', unbound_cuint64_type)])
+        assert cstruct_type.alignment == unbound_cuint64_type.alignment
 
     def test_getAlignment_onPackingSmallerThanMaxMemberAlignment_returnsPacking(self, unbound_cint_type):
         cstruct_type = cdm.CStructType(

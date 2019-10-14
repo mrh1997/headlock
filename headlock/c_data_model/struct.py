@@ -11,6 +11,7 @@ MembersDefinition = Union[Dict[str, CProxyType], List[Tuple[str,CProxyType]]]
 class CStructType(Sequence, CProxyType):
 
     __NEXT_ANONYMOUS_ID__ = 1
+    MACHINE_WORD_SIZE = 4
 
     _members_:Dict[str, CProxyType] = {}
     _members_order_:List[str] = []
@@ -22,7 +23,7 @@ class CStructType(Sequence, CProxyType):
         if not struct_name:
             struct_name = f'__anonymous_{CStructType.__NEXT_ANONYMOUS_ID__}__'
             CStructType.__NEXT_ANONYMOUS_ID__ += 1
-        self._packing_ = packing or 4
+        self._packing_ = packing
         self.struct_name = struct_name
         self._members_ = None
         self._members_order_ = None
@@ -60,11 +61,14 @@ class CStructType(Sequence, CProxyType):
         next_offset = 0
         self.offsetof = {}
         for member_name, member in member_types:
-            alignment = min(member.alignment, self._packing_)
+            alignment = member.alignment
+            if self._packing_:
+                alignment = min(alignment, self._packing_)
             next_offset += (-next_offset % alignment)
             self.offsetof[member_name] = next_offset
             next_offset += member.sizeof
-        self.sizeof = next_offset + (-next_offset % self._packing_)
+        actual_packing = (self._packing_ or self.MACHINE_WORD_SIZE)
+        self.sizeof = next_offset + (-next_offset % actual_packing)
 
     def __call__(self, *args, **argv):
         argv.update(zip(self._members_order_, args))
@@ -85,7 +89,7 @@ class CStructType(Sequence, CProxyType):
 
     def __hash__(self):
         return sum(map(hash, self),
-                   hash(self.c_definition_full()) + self._packing_)
+                   hash(self.c_definition_full()) + hash(self._packing_))
 
     def is_anonymous_struct(self):
         return self.struct_name.startswith('__anonymous_')
@@ -131,10 +135,13 @@ class CStructType(Sequence, CProxyType):
     @property
     def alignment(self):
         if self._members_:
-            return min(self._packing_,
-                       max(m.alignment for m in self._members_.values()))
+            alignment = max(m.alignment for m in self._members_.values())
+            if self._packing_:
+                return min(self._packing_, alignment)
+            else:
+                return alignment
         else:
-            return self._packing_
+            return self._packing_ or self.MACHINE_WORD_SIZE
 
     def convert_to_c_repr(self, py_val):
         try:
