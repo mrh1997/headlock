@@ -18,8 +18,7 @@ stops with a crash (=no teardown executed)
 import os
 from pathlib import Path
 from collections import defaultdict
-from headlock.testsetup import TestSetup
-from headlock.buildsys_drvs import BuildDescription
+from headlock.buildsys_drvs import mingw
 from .common import PYTEST_HEADLOCK_DIR
 
 
@@ -111,32 +110,7 @@ def pytest_runtest_logreport(report):
         finish_test(report.nodeid, report.failed)
 
 
-class CMakeFileGenerator(BuildDescription):
-
-    def __init__(self, base_builddesc):
-        super().__init__(base_builddesc.name, base_builddesc.build_dir)
-        self.base_builddesc = base_builddesc
-
-    def clang_target(self):
-        return self.base_builddesc.clang_target()
-
-    def c_sources(self):
-        return self.base_builddesc.c_sources()
-
-    def sys_predef_macros(self):
-        return self.base_builddesc.sys_predef_macros()
-
-    def sys_incl_dirs(self):
-        return self.base_builddesc.sys_incl_dirs()
-
-    def predef_macros(self):
-        return self.base_builddesc.predef_macros()
-
-    def incl_dirs(self):
-        return self.base_builddesc.incl_dirs()
-
-    def exe_path(self):
-        return self.base_builddesc.exe_path()
+class CMakeFileGenerator(mingw.get_default_builddesc_cls()):
 
     @staticmethod
     def escape(str):
@@ -155,14 +129,14 @@ class CMakeFileGenerator(BuildDescription):
             param_sets[param_set].append(c_src)
         return list(param_sets.values())
 
-    def generate_cmakelists(self):
+    def generate_cmakelists(self, additonal_c_sources):
         def add_lib_desc(lib_name, lib_type, c_srcs):
             yield f'add_library({lib_name} {lib_type}'
             for c_src in c_srcs:
                 rel_c_src_path = os.path.relpath(c_src, self.build_dir)
                 yield ' ' + rel_c_src_path.replace('\\', '/')
             yield ')\n'
-            predef_macros = self.base_builddesc.predef_macros()[c_srcs[0]]
+            predef_macros = self.predef_macros()[c_srcs[0]]
             if predef_macros:
                 yield f'target_compile_definitions({lib_name} PUBLIC'
                 for mname, mval in predef_macros.items():
@@ -170,7 +144,7 @@ class CMakeFileGenerator(BuildDescription):
                     yield self.escape(mname +
                                       ('' if mval is None else f'={mval}'))
                 yield ')\n'
-            incl_dirs = self.base_builddesc.incl_dirs()[c_srcs[0]]
+            incl_dirs = self.incl_dirs()[c_srcs[0]]
             if incl_dirs:
                 yield f'target_include_directories({lib_name} PUBLIC'
                 for incl_dir in incl_dirs:
@@ -189,18 +163,22 @@ class CMakeFileGenerator(BuildDescription):
         grouped_c_sources = self.group_c_sources_by_paramset()
         if len(grouped_c_sources) == 1:
             c_srcs = grouped_c_sources[0]
-            yield from add_lib_desc(main_lib_name, 'SHARED', c_srcs)
+            yield from add_lib_desc(main_lib_name, 'SHARED',
+                                    c_srcs + additonal_c_sources)
         else:
             yield f'add_library({main_lib_name} SHARED'
             for cmod_ndx, c_srcs in enumerate(grouped_c_sources):
                 yield f' $<TARGET_OBJECTS:CMOD_{self.name}_{cmod_ndx}>'
+            if additonal_c_sources:
+                yield f' $<TARGET_OBJECTS:CMOD_{self.name}'
             yield ')\n'
-        compile_opts = getattr(self.base_builddesc,
-                               'ADDITIONAL_COMPILE_OPTIONS', [])
-        link_opts = getattr(self.base_builddesc,
-                            'ADDITIONAL_LINK_OPTIONS', [])
-        lib_dirs = getattr(self.base_builddesc, 'lib_dirs', [])
-        req_libs = getattr(self.base_builddesc, 'req_libs', [])
+            if additonal_c_sources:
+                yield from add_lib_desc('CMOD_' + self.name, 'OBJECT',
+                                        additonal_c_sources)
+        compile_opts = getattr(self, 'ADDITIONAL_COMPILE_OPTIONS', [])
+        link_opts = getattr(self, 'ADDITIONAL_LINK_OPTIONS', [])
+        lib_dirs = getattr(self, 'lib_dirs', [])
+        req_libs = getattr(self, 'req_libs', [])
         if compile_opts:
             yield f"add_compile_options({' '.join(compile_opts)})\n"
         if link_opts:
@@ -221,11 +199,10 @@ class CMakeFileGenerator(BuildDescription):
                 yield from add_lib_desc(cmod_name, 'OBJECT', c_srcs)
                 yield '\n'
 
-    def build(self):
+    def build(self, additonal_c_sources=None):
         cmakelists_path = self.build_dir / 'CMakeLists.txt'
-        cmakelists_content = ''.join(
-            self.generate_cmakelists())
-        cmakelists_path.write_text(cmakelists_content)
+        cmakelists_path.write_text(
+            ''.join(self.generate_cmakelists(additonal_c_sources or [])))
 
         if master_cmakelist:
             master_cmakelist_path = Path(master_cmakelist)
@@ -243,23 +220,7 @@ class CMakeFileGenerator(BuildDescription):
                                 f'add_subdirectory('
                                 f'{rel_build_dir_str} {self.name})\n')
 
-        self.base_builddesc.build()
+        super().build(additonal_c_sources)
 
 
-###!!! TestSetup.__TOOLCHAIN__ = CMakeFileGenerator(TestSetup.__TOOLCHAIN__)
-
-
-if __name__ == '__main__':
-    from unittest.mock import Mock
-    base_builddesc = Mock(
-        spec=BuildDescription,
-        c_sources=Mock(return_value=['src1.c', 'src2.c', 'src3.c']),
-        predef_macros=Mock(return_value={'src1.c': dict(A='1', B='2'),
-                                         'src2.c': dict(), 'src3.c': dict()}),
-        incl_dirs=Mock(return_value={'src1.c': ['/incl/dir1', '/incl/dir2'],
-                                     'src2.c': [], 'src3.c': []}),
-        req_libs=['a', 'b'],
-        build_dir=Path('/build/dir'))
-    base_builddesc.name = 'PrjName'
-    cmakefilegen = CMakeFileGenerator(base_builddesc)
-    print(''.join(cmakefilegen.generate_cmakelists()))
+mingw.get_default_builddesc_cls = lambda: CMakeFileGenerator

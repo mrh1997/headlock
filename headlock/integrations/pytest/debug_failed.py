@@ -13,32 +13,22 @@ import sys
 from pathlib import Path
 
 import pytest
-from headlock.testsetup import TestSetup
-import platform
+from headlock.buildsys_drvs import mingw
 
 from .common import PYTEST_HEADLOCK_DIR
 
 
-if platform.architecture()[0] == '32bit':
-    from headlock.buildsys_drvs.mingw import MinGW32BuildDescription as MinGWxxToolChain
-else:
-    from headlock.buildsys_drvs.mingw import MinGW64BuildDescription as MinGWxxToolChain
-
-
-class DummyToolChain(MinGWxxToolChain):
+class DummyToolChain(mingw.get_default_builddesc_cls()):
     """
     This toolchain is a placeholder for an actual toolchain.
     It is used for debugging, where the .DLL is build by the IDE and shall
     not be overwritten by the python script
     """
 
-    def __init__(self):
-        super().__init__(exception_model='dwarf')
+    def exe_path(self):
+        return self.build_dir / '__headlock_dbg__.dll'
 
-    def exe_path(self, name, build_dir):
-        return build_dir / '__headlock_dbg__.dll'
-
-    def build(self, name, build_dir, transunits, req_libs, lib_dirs):
+    def build(self, additonal_c_sources=None):
         pass
 
 
@@ -55,7 +45,7 @@ def get_root_dir(root_dir=None):
 
 
 def main(cur_dir=None):
-    TestSetup.__TOOLCHAIN__ = DummyToolChain()
+    mingw.get_default_builddesc_cls = lambda: DummyToolChain
 
     print()
     print()
