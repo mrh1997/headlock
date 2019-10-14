@@ -536,6 +536,12 @@ class TestTestSetup(object):
         with TSDummy() as ts:
             pass
 
+    def test_onConstStruct_ok(self):
+        TSDummy = self.cls_from_ccode(b'const struct s {} x;',
+                                      'const_strct.c')
+        with TSDummy() as ts:
+            pass
+
     def test_onTwoTestsetups_haveDifferentStructCollections(self):
         TS1 = self.cls_from_ccode(b'struct s { int a; };', 'struct1.c')
         TS2 = self.cls_from_ccode(b'struct s { int b; };', 'struct2.c')

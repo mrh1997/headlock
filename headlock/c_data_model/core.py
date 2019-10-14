@@ -122,6 +122,18 @@ class CProxyType:
         derived.__c_attribs__ = self.__c_attribs__ | {attr_name}
         return derived
 
+    def get_pure_ctype(self):
+        """
+        This function strips all C-attributes like "const" and "volatile", as
+        they are not part of the underlying C-type
+        """
+        if self.__c_attribs__:
+            derived = copy.copy(self)
+            derived.__c_attribs__ = set()
+            return derived
+        else:
+            return self
+
     def iter_subtypes(self, top_level_last=False, filter=None,
                       parent=None, processed=None):
         if processed is None:

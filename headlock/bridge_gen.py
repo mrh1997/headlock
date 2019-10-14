@@ -13,10 +13,10 @@ def write_required_struct_defs(output:TextIO, ctypes:Iterable[CProxyType]):
     the typedefs 'ctypes'.
     """
     for cstruct_type in iter_req_structs_in_dep_order(ctypes):
-        output.write(cstruct_type.c_definition() + ';\n')
+        output.write(cstruct_type.get_pure_ctype().c_definition() + ';\n')
     for cstruct_type in iter_req_structs_in_dep_order(ctypes,
                                                       only_embedded_types=True):
-        output.write(cstruct_type.c_definition_full() + ';\n')
+        output.write(cstruct_type.get_pure_ctype().c_definition_full() + ';\n')
     output.write('\n')
 
 
