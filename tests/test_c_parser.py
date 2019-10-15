@@ -511,6 +511,11 @@ class TestCParser:
         self.assert_parses('int funcname(int, char a);',
                            exp_funcs={'funcname': func_def})
 
+    def test_readFromCursor_onFuncProtoWithArrayArg_createsFuncWithPointerArg(self):
+        func_def = CFuncType(args=[bd.int.ptr])
+        self.assert_parses('void funcname(int[32]);',
+                           exp_funcs={'funcname': func_def})
+
     def test_readFromCursor_onExternFunc_ok(self):
         self.assert_parses('extern void funcname();',
                            exp_funcs={'funcname': CFuncType()})

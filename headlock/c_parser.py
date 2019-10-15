@@ -10,7 +10,7 @@ from typing import Dict, List, Any, ByteString, Union
 from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
     TranslationUnit, Config, TranslationUnitLoadError, Cursor, Type
 from .c_data_model import BuildInDefs, CProxyType, CFuncType, CStructType, \
-    CUnionType, CEnumType, CVectorType, CStruct, CUnion, CEnum
+    CUnionType, CEnumType, CVectorType, CStruct, CUnion, CEnum, CArrayType
 
 
 if sys.platform == 'win32':
@@ -313,8 +313,12 @@ class CParser:
             else:
                 ret_objtype = self.convert_type_from_cursor(
                     type_crs.get_result())
-            arg_cproxytypes = [self.convert_type_from_cursor(param)
-                             for param in type_crs.argument_types()]
+            arg_cproxytypes = []
+            for param in type_crs.argument_types():
+                arg_cproxytype = self.convert_type_from_cursor(param)
+                if isinstance(arg_cproxytype, CArrayType):
+                    arg_cproxytype = arg_cproxytype.base_type.ptr
+                arg_cproxytypes.append(arg_cproxytype)
             res = CFuncType(ret_objtype, arg_cproxytypes)
         elif type_crs.kind == TypeKind.ELABORATED:
             decl_cursor = type_crs.get_declaration()
