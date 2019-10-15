@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, Mock, call
 import pytest
+from threading import Thread
+from time import sleep
 
 from .helpers import build_tree
 from headlock.testsetup import TestSetup, MethodNotMockedError, \
@@ -450,13 +452,55 @@ class TestTestSetup(object):
                 assert ts.mock_fallback('unmocked_func', 11, 22)
             assert "unmocked_func" in str(excinfo.value)
 
+    def test_mockFuncWrapper_onRaisesException_forwardsExcImmediatelyToCallingPyCode(self):
+        TSMock = self.cls_from_ccode(b'void exc_func();\n'
+                                     b'void func() { exc_func(); exc_func(); }',
+                                     'exc_forwarder.c')
+        with TSMock() as ts:
+            ts.exc_func_mock = Mock(side_effect=ValueError)
+            with pytest.raises(ValueError):
+                ts.func()
+            assert ts.exc_func_mock.call_count == 1
+
+    def test_mockFuncWrapper_onRaisesException_forwardsExcOverMultipleBridges(self):
+        TSMock = self.cls_from_ccode(b'void inner_py();\n'
+                                     b'void outer_py();\n'
+                                     b'void inner_c() { while(1) inner_py();}\n'
+                                     b'void outer_c() { while(1) outer_py();}',
+                                     'multibridged_exc_forwarder.c')
+        with TSMock() as ts:
+            ts.outer_py_mock = lambda: ts.inner_c()
+            ts.inner_py_mock = Mock(side_effect=KeyError)
+            with pytest.raises(KeyError):
+                ts.outer_c()
+
+    def test_mockFuncWrapper_onRaisesExceptionsInMultipleThreads_handlesEveryThreadSeparately(self):
+        TSMock = self.cls_from_ccode(b'void exc_func(int tid);\n'
+                                     b'void func(int tid) {exc_func(tid);}',
+                                     'multithreaded_exc_forwarder.c')
+        with TSMock() as ts:
+            def exc_func(tid):
+                sleep(0.030)
+                raise ValueError(str(tid))
+            ts.exc_func_mock = exc_func
+            def thread_func(tid):
+                with pytest.raises(ValueError, match=str(tid)):
+                    ts.func(tid)
+            threads = [Thread(target=thread_func, args=[tid])
+                       for tid in range(5)]
+            for thread in threads:
+                thread.start()
+                sleep(0.005)
+            for thread in threads:
+                thread.join()
+
     def test_typedefWrapper_storesTypeDefInTypedefCls(self):
         TSMock = self.cls_from_ccode(b'typedef int td_t;', 'typedef.c')
         with TSMock() as ts:
             assert ts.td_t == ts.int
 
     def test_typedefWrapper_instanciate_ok(self):
-        TSMock = self.cls_from_ccode(b'typedef int i;', 'instaniate_typedef.c')
+        TSMock = self.cls_from_ccode(b'typedef int i;', 'instantiate_typedef.c')
         with TSMock() as ts:
             assert ts.i(33) == 33
 

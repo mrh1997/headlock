@@ -203,7 +203,7 @@ class TestSetup(BuildInDefs):
 
             ctypes = list(itertools.chain(self.__globals.values(),
                                           self.__required_funcptrs.values()))
-            bridge_gen.write_required_struct_defs(output, ctypes)
+            bridge_gen.write_required_defs(output, ctypes)
 
             mocks = {name: type
                      for name, type in self.__globals.items()

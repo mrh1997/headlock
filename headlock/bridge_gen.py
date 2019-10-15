@@ -7,11 +7,12 @@ import itertools
 from typing import TextIO, Dict, Iterable
 
 
-def write_required_struct_defs(output:TextIO, ctypes:Iterable[CProxyType]):
+def write_required_defs(output:TextIO, ctypes:Iterable[CProxyType]):
     """
     declares all structs that are required directly or indirectly by one of
     the typedefs 'ctypes'.
     """
+    output.write('#include <setjmp.h>\n\n')
     for cstruct_type in iter_req_structs_in_dep_order(ctypes):
         output.write(cstruct_type.get_pure_ctype().c_definition() + ';\n')
     for cstruct_type in iter_req_structs_in_dep_order(ctypes,
@@ -39,8 +40,13 @@ def iter_req_structs_in_dep_order(ctypes, only_embedded_types=False):
 def write_py2c_bridge(output:TextIO, cfuncs:Iterable[CFuncType]):
     output.write(
         'int _py2c_bridge_(int bridge_ndx, void (*func_ptr)(void), '
-                        'unsigned char * params, unsigned char * retval)\n'
+                        'unsigned char * params, unsigned char * retval, '
+                        'void * * jmp_dest)\n'
         '{\n'
+        '\tjmp_buf _jmp_dest;\n'
+        '\t*jmp_dest = (void*) &_jmp_dest;\n'
+        '\tif (setjmp(_jmp_dest))\n'
+        '\t\treturn 2;\n'
         '\tswitch (bridge_ndx)\n'
         '\t{\n')
     bridge_ndxs = {}
@@ -71,9 +77,9 @@ def write_py2c_bridge(output:TextIO, cfuncs:Iterable[CFuncType]):
 def write_c2py_bridge(output:TextIO, required_funcptrs:Iterable[CFuncType],
                       max_instances:int):
     output.write(
-        f'void (* _c2py_bridge_handler)(int bridge_ndx, int instance_ndx, '
-                    f'unsigned char * params, unsigned char * retval) '
-                    f'= (void *) 0;\n'
+        f'void * (* _c2py_bridge_handler)(int bridge_ndx, int instance_ndx, '
+                    'unsigned char * params, unsigned char * retval) '
+                    '= (void *) 0;\n'
         f'\n')
     bridge_ndxs = {}
     bridge_ndx_ctr = itertools.count()
@@ -113,8 +119,9 @@ def write_c2py_bridge_func(output, bridge_ndx, instance_ndx, cfunc):
     for arg_ndx in range(len(cfunc.args)):
         output.write(f'\t*pp{arg_ndx} = p{arg_ndx};\n')
     output.write(
-        f'\t_c2py_bridge_handler({bridge_ndx}, {instance_ndx}, params, '
-        f'{retval_str});\n')
+        f'\tjmp_buf * exc_jump = (jmp_buf*) _c2py_bridge_handler('
+        f'{bridge_ndx}, {instance_ndx}, params, {retval_str});\n')
+    output.write('\tif (exc_jump) longjmp(*exc_jump, 1);\n')
     if cfunc.returns is not None:
         output.write('\treturn retval;\n')
     output.write('}\n\n')

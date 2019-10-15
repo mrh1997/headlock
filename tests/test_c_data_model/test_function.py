@@ -144,19 +144,6 @@ class TestCFuncType:
         assert cfunc_obj is CPROXY_CLASS.return_value
 
     @patch.object(cdm.CFuncType, 'CPROXY_CLASS')
-    def test_call_onCallableWithRetValWhichRaisesException_returnsNullVal(self, CPROXY_CLASS, cint_type, addrspace):
-        cfunc_type = cdm.CFuncType(cint_type, [], addrspace)
-        cfunc_type(Mock(side_effect=IOError))
-        wrapped_func = next(iter(addrspace.funcs.values()))
-        retval_adr = addrspace.alloc_memory(4)
-        addrspace.write_memory(retval_adr, b'aaaa')
-        wrapped_func('cint f(void)', 0, retval_adr)
-        exc = headlock.c_data_model.function.last_tunnelled_exception
-        headlock.c_data_model.function.last_tunnelled_exception = None
-        assert exc[0] is IOError
-        assert addrspace.read_memory(retval_adr, 4) == b'\x00\x00\x00\x00'
-
-    @patch.object(cdm.CFuncType, 'CPROXY_CLASS')
     def test_call_onCFunc_returnsNewCFunc(self, CPROXY_CLASS, cint_type, addrspace):
         cfunc_type = cdm.CFuncType(None, addrspace=addrspace)
         cfunc_type2 = cdm.CFuncType(cint_type, [], addrspace)

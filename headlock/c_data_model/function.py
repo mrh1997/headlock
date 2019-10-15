@@ -5,9 +5,6 @@ from ..address_space import AddressSpace
 from typing import Union
 
 
-last_tunnelled_exception = None
-
-
 class CFuncType(CProxyType):
 
     PRECEDENCE = 20
@@ -24,7 +21,6 @@ class CFuncType(CProxyType):
             raise InvalidAddressSpaceError(
                 'A argument type of function has different addressspace than '
                 'function type')
-        self.language = "C"
         super().__init__(None, addrspace)
 
     def bind(self, addrspace:AddressSpace):
@@ -79,37 +75,23 @@ class CFuncType(CProxyType):
     def wrapped_pyfunc(pyfunc, name, arg_types, return_type, addrspace):
         logger = None
         def wrapper(params_adr, retval_adr):
-            global last_tunnelled_exception
-            if last_tunnelled_exception is not None:
-                if logger:
-                    logger.write('<call ' + name +
-                                 'failed due to preceeding exception>')
-                return None if return_type is None else return_type.null_val
             next_param_adr = params_adr
             params = []
             for arg_type in arg_types:
                 params.append(arg_type.create_cproxy_for(next_param_adr).copy())
                 next_param_adr += arg_type.sizeof
-            try:
+            if logger:
+                logger.write('    ' + (name or '<unknown>'))
+                logger.write('('+(', '.join(map(repr, params)))+')')
+            retval = pyfunc(*params)
+            if return_type is not None:
+                passed_retval = return_type.create_cproxy_for(retval_adr)
+                passed_retval.val = retval
                 if logger:
-                    logger.write('    ' + (name or '<unknown>'))
-                    logger.write('('+(', '.join(map(repr, params)))+')')
-                retval = pyfunc(*params)
-                if return_type is not None:
-                    passed_retval = return_type.create_cproxy_for(retval_adr)
-                    passed_retval.val = retval
-                    if logger:
-                        logger.write('->' + repr(retval) + '\n')
-                else:
-                    if logger:
-                        logger.write('\n')
-            except Exception:
-                last_tunnelled_exception = sys.exc_info()
+                    logger.write('->' + repr(retval) + '\n')
+            else:
                 if logger:
-                    logger.write('!>'+repr(last_tunnelled_exception[1])+'\n')
-                if return_type is not None:
-                    passed_retval = return_type.create_cproxy_for(retval_adr)
-                    passed_retval.val = return_type.null_val
+                    logger.write('\n')
         return wrapper
 
     def __call__(self, init_val:Union[str, callable, int]) -> 'CFunc':
@@ -177,12 +159,7 @@ class CFunc(CProxy):
             retval_address = retval.__address__
         addrspace.invoke_c_code(self.__address__, self.ctype.sig_id,
                                 params_bufadr, retval_address)
-        if last_tunnelled_exception is not None:
-            exc = last_tunnelled_exception
-            last_tunnelled_exception = None
-            raise exc[0](exc[1]).with_traceback(exc[2])
-        else:
-            return retval
+        return retval
 
     def __repr__(self):
         return f"<CFunc of {self.name or '???'!r}>"

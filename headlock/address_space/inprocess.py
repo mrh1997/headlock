@@ -2,6 +2,7 @@ from platform import architecture
 from typing import Dict
 import ctypes as ct
 import sys
+from threading import local
 
 from . import AddressSpace
 
@@ -18,7 +19,9 @@ def free_cdll(cdll):
     else:
         raise NotImplementedError('the platform is not supported yet')
 
+
 ptr_t = ct.c_uint32 if ct.sizeof(ct.CFUNCTYPE(None)) == 4 else ct.c_uint64
+
 
 class InprocessAddressSpace(AddressSpace):
     """
@@ -26,11 +29,21 @@ class InprocessAddressSpace(AddressSpace):
     current python interpreter and uses ctypes for accessing it.
     """
 
+    class CallStacks(local):
+        """
+        As every thread has its own callstack, the callstacks are managed
+        as thread local storage object.
+        """
+        def __init__(self):
+            self.exc = None
+            self.jump_dests = []
+
     def __init__(self, cdll_name:str,
                  py2c_bridge_ndxs:Dict[str, int]=None,
                  c2py_bridge_ndxs:Dict[str, int]=None,
                  max_c2py_instances:int=1):
         super().__init__()
+        self.__callstacks = self.CallStacks()
         self.__mempool = {}
         self.__symbol_map = {}
         self.cdll = ct.CDLL(cdll_name)
@@ -51,11 +64,21 @@ class InprocessAddressSpace(AddressSpace):
 
     def __setup_c2py_bridge_handler(self):
         c2py_pyfuncs = self.__c2py_pyfuncs
+        callstacks = self.__callstacks
         def my_bridge_handler(sig_id, instance_ndx, param_adr, retval_adr):
             # avoid reference to self within this function
             func = c2py_pyfuncs[sig_id, instance_ndx]
-            func(param_adr, retval_adr)
-        bridge_handler_t = ct.CFUNCTYPE(None,
+            try:
+                func(param_adr, retval_adr)
+            except Exception:
+                callstacks.exc = sys.exc_info()
+                # This is a workaround, as "return callstacks.jump_dests[-1]"
+                # does not work for some reason
+                jump_dest_p = ct.pointer(callstacks.jump_dests[-1])
+                return ct.cast(jump_dest_p, ct.POINTER(ptr_t)).contents.value
+            else:
+                return None
+        bridge_handler_t = ct.CFUNCTYPE(ct.c_void_p,
                                         ct.c_int, ct.c_int, ptr_t, ptr_t)
         self.__my_bridge_handler = bridge_handler_t(my_bridge_handler)
         bridge_handler = ptr_t.in_dll(self.cdll, '_c2py_bridge_handler')
@@ -104,10 +127,22 @@ class InprocessAddressSpace(AddressSpace):
         except (AttributeError, KeyError):
             raise ValueError(f'No Bridge for signature {sig_id!r} found')
         else:
-            if not self.cdll._py2c_bridge_(bridge_ndx, func_adr,
-                                           args_adr, retval_adr):
+            jmp_dest = ct.c_void_p()
+            self.__callstacks.jump_dests.append(jmp_dest)
+            status = self.cdll._py2c_bridge_(bridge_ndx,
+                                             func_adr,
+                                             args_adr,
+                                             retval_adr,
+                                             ct.byref(jmp_dest))
+            self.__callstacks.jump_dests.pop()
+            if status == 0:
                 raise ValueError('Internal Error '
                                  '(bridge index map does not match binary)')
+            elif status == 2:
+                exc = self.__callstacks.exc
+                assert exc is not None
+                self.__callstacks.exc = None
+                raise exc[0](exc[1]).with_traceback(exc[2])
 
     def create_c_code(self, sig_id, pyfunc):
         try:
