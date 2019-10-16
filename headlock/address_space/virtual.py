@@ -35,7 +35,7 @@ class VirtualAddressSpace(AddressSpace):
                    exp_params:bytes=None, retval:bytes=None):
         """
         This helper allows to create functions, that can be passed to the
-        symbols paramater of __init__. They will verify that invoke_c_code
+        symbols paramater of __init__. They will verify that invoke_c_func
         was called correctly
         """
         def c_code(sig_id, args_adr, retval_adr):
@@ -72,12 +72,12 @@ class VirtualAddressSpace(AddressSpace):
         else:
             raise ValueError()
 
-    def invoke_c_code(self, func_adr:int, sig_id:str,
+    def invoke_c_func(self, func_adr:int, sig_id:str,
                       args_adr:int, retval_adr:int):
         func = self.funcs[func_adr]
         return func(sig_id, args_adr, retval_adr)
 
-    def create_c_code(self, sig_id:str, pyfunc):
+    def create_c_callback(self, sig_id:str, pyfunc):
         adr = self.CODE_ADR_OFFSET + len(self.funcs)
         def callback_wrapper(act_sig_id, param_adr, retval_adr):
             assert act_sig_id == sig_id

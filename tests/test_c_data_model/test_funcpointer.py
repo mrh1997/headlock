@@ -11,7 +11,7 @@ class TestCFuncPointerType:
         callback = Mock()
         bridge_adr_buf = cfunc_type.ptr.convert_to_c_repr(callback)
         bridge_adr = int.from_bytes(bridge_adr_buf, cdm.ENDIANESS)
-        addrspace.invoke_c_code(bridge_adr, cfunc_type.sig_id, 0, 0)
+        addrspace.invoke_c_func(bridge_adr, cfunc_type.sig_id, 0, 0)
         callback.assert_called_once()
 
 

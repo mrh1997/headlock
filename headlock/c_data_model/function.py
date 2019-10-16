@@ -109,7 +109,7 @@ class CFuncType(CProxyType):
             wrapped_func = self.wrapped_pyfunc(init_val, name,
                                                self.args, self.returns,
                                                self.__addrspace__)
-            adr = self.__addrspace__.create_c_code(self.sig_id, wrapped_func)
+            adr = self.__addrspace__.create_c_callback(self.sig_id, wrapped_func)
         else:
             adr = init_val
         return self.create_cproxy_for(adr)
@@ -157,7 +157,7 @@ class CFunc(CProxy):
         else:
             retval = return_ctype()
             retval_address = retval.__address__
-        addrspace.invoke_c_code(self.__address__, self.ctype.sig_id,
+        addrspace.invoke_c_func(self.__address__, self.ctype.sig_id,
                                 params_bufadr, retval_address)
         return retval
 

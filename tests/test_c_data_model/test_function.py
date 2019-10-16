@@ -137,7 +137,7 @@ class TestCFuncType:
         param_adr = addrspace.alloc_memory(8)
         addrspace.write_memory(param_adr, b'\x44\x33\x22\x11\x99\x88\x77\x66')
         sig_id = 'cint f(cint p0, cint p1)'
-        addrspace.invoke_c_code(bridge_adr, sig_id, param_adr, result_adr)
+        addrspace.invoke_c_func(bridge_adr, sig_id, param_adr, result_adr)
         assert addrspace.read_memory(result_adr, 4) == b'\xDD\xCC\xBB\xAA'
         callback.assert_called_once_with(0x11223344, 0x66778899)
         assert isinstance(callback.call_args[0][0], cdm.CInt)

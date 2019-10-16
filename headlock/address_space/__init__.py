@@ -79,7 +79,7 @@ class AddressSpace:
         """
 
     @abc.abstractmethod
-    def invoke_c_code(self, func_adr:int, sig_id:str,
+    def invoke_c_func(self, func_adr:int, sig_id:str,
                       args_adr:int, retval_adr:int) -> bytes:
         """
         invokes a piece of C code via the bridge for signature of name
@@ -87,11 +87,12 @@ class AddressSpace:
         """
 
     @abc.abstractmethod
-    def create_c_code(self, sig_id:str,
-                      pyfunc:Callable[[int, int], None]) -> int:
+    def create_c_callback(self, sig_id:str,
+                          pyfunc:Callable[[int, int], None]) -> int:
         """
-        Creates a new C function if signature 'sig_id'. Everytime this function
-        is called, the call is bridged and forwarded to pyfunc.
+        Creates a new C function pointer of signature 'sig_id'.
+        Everytime this function is called, the call is bridged and
+        forwarded to pyfunc.
         """
 
     @abc.abstractmethod

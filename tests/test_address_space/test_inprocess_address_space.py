@@ -92,53 +92,54 @@ def test_getSymbolAdr_onFunction_returnsAddressOfFunc():
         ret123_func = ct.CFUNCTYPE(ct.c_short)(ret123_adr)
         assert ret123_func() == 123
 
-def test_invokeCCode_onUnknownSigId_raisesValueError(inproc_addrspace):
+def test_invokeCFunc_onUnknownSigId_raisesValueError(inproc_addrspace):
     with pytest.raises(ValueError):
-        inproc_addrspace.invoke_c_code(0, 'invalid_sigid', 0, 0)
+        inproc_addrspace.invoke_c_func(0, 'invalid_sigid', 0, 0)
 
-def test_invokeCCode_onBridgeReturnsFalse_raisesValueError():
+def test_invokeCFunc_onBridgeReturnsFalse_raisesValueError():
     with addrspace_for(bridge_src(py2c_retval='0')) as inproc_addrspace:
         with pytest.raises(ValueError):
-            inproc_addrspace.invoke_c_code(0, 'py2c_sigid0', 0, 0)
+            inproc_addrspace.invoke_c_func(0, 'py2c_sigid0', 0, 0)
 
-def test_invokeCCode_onBridgeReturnsTrue_passesAllParameters():
+def test_invokeCFunc_onBridgeReturnsTrue_passesAllParameters():
     src = bridge_src(py2c_retval='bridge_ndx == 2 && '
                                  '(void*) func_ptr == (void*) 123 && '
                                  '(void*) params == (void*) 456 && '
                                  '(void*) retval == (void*) 789')
     with addrspace_for(src) as inproc_addrspace:
-        inproc_addrspace.invoke_c_code(123, 'py2c_sigid2', 456, 789)
+        inproc_addrspace.invoke_c_func(123, 'py2c_sigid2', 456, 789)
 
-def test_createCCode_onUnknownSigId_raisesValueError(inproc_addrspace):
+def test_createCallback_onUnknownSigId_raisesValueError(inproc_addrspace):
     with pytest.raises(ValueError):
-        inproc_addrspace.create_c_code('invalid_sigid', Mock())
+        inproc_addrspace.create_c_callback('invalid_sigid', Mock())
 
-def test_createCCode_returnsAddressOfC2PyBridge():
+def test_createCallback_returnsAddressOfC2PyBridge():
     with addrspace_for(bridge_src([[], [], [123456]])) as inproc_addrspace:
-        assert inproc_addrspace.create_c_code('c2py_sigid2', Mock()) == 123456
+        assert inproc_addrspace.create_c_callback('c2py_sigid2', Mock()) \
+               == 123456
 
-def test_createCCode_onMultipleCallsOnSameSigId_returnsNextAdr():
+def test_createCallback_onMultipleCallsOnSameSigId_returnsNextAdr():
     with addrspace_for(bridge_src([[0, 123]])) as inproc_addrspace:
-        inproc_addrspace.create_c_code('c2py_sigid0', Mock())
-        assert inproc_addrspace.create_c_code('c2py_sigid0', Mock()) == 123
+        inproc_addrspace.create_c_callback('c2py_sigid0', Mock())
+        assert inproc_addrspace.create_c_callback('c2py_sigid0', Mock()) == 123
 
-def test_createCCode_onCallsToDifferentSigId_returnsFirstAdrOfEverySigId():
+def test_createCallback_onCallsToDifferentSigId_returnsFirstAdrOfEverySigId():
     with addrspace_for(bridge_src([[123], [456]])) as inproc_addrspace:
-        inproc_addrspace.create_c_code('c2py_sigid0', Mock())
-        assert inproc_addrspace.create_c_code('c2py_sigid1', Mock()) == 456
+        inproc_addrspace.create_c_callback('c2py_sigid0', Mock())
+        assert inproc_addrspace.create_c_callback('c2py_sigid1', Mock()) == 456
 
-def test_createCCode_onTooMuchInstancesPerSigId_raisesValueError():
+def test_createCallback_onTooMuchInstancesPerSigId_raisesValueError():
     bridge_array = [list(range(MAX_C2PY_BRIDGE_INSTANCES))]
     with addrspace_for(bridge_src(bridge_array)) as inproc_addrspace:
         for cnt in range(MAX_C2PY_BRIDGE_INSTANCES):
-            inproc_addrspace.create_c_code('c2py_sigid0', Mock())
+            inproc_addrspace.create_c_callback('c2py_sigid0', Mock())
         with pytest.raises(ValueError):
-            inproc_addrspace.create_c_code('c2py_sigid0', Mock())
+            inproc_addrspace.create_c_callback('c2py_sigid0', Mock())
 
-def test_createCCode_registersPassedFuncForBeingCalledByC2PyBridgeHandler():
+def test_createCallback_registersPassedFuncForBeingCalledByC2PyBridgeHandler():
     with addrspace_for(bridge_src([[], []])) as inproc_addrspace:
         callback = Mock()
-        inproc_addrspace.create_c_code('c2py_sigid1', callback)
+        inproc_addrspace.create_c_callback('c2py_sigid1', callback)
         c2py_bridge_handler_t = ct.CFUNCTYPE(
             None, ct.c_int, ct.c_int, ct.c_void_p, ct.c_void_p)
         c2py_bridge_handler = c2py_bridge_handler_t.in_dll(

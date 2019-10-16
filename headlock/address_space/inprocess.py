@@ -120,20 +120,20 @@ class InprocessAddressSpace(AddressSpace):
         except KeyError:
             raise ValueError('no known symbol at address')
 
-    def invoke_c_code(self, func_adr:int, sig_id:str,
+    def invoke_c_func(self, func_adr:int, sig_id:str,
                       args_adr:int, retval_adr:int):
         try:
             bridge_ndx = self.__py2c_bridge_ndxs[sig_id]
         except (AttributeError, KeyError):
             raise ValueError(f'No Bridge for signature {sig_id!r} found')
         else:
-            jmp_dest = ct.c_void_p()
-            self.__callstacks.jump_dests.append(jmp_dest)
+            jump_dest = ct.c_void_p()
+            self.__callstacks.jump_dests.append(jump_dest)
             status = self.cdll._py2c_bridge_(bridge_ndx,
                                              func_adr,
                                              args_adr,
                                              retval_adr,
-                                             ct.byref(jmp_dest))
+                                             ct.byref(jump_dest))
             self.__callstacks.jump_dests.pop()
             if status == 0:
                 raise ValueError('Internal Error '
@@ -144,7 +144,7 @@ class InprocessAddressSpace(AddressSpace):
                 self.__callstacks.exc = None
                 raise exc[0](exc[1]).with_traceback(exc[2])
 
-    def create_c_code(self, sig_id, pyfunc):
+    def create_c_callback(self, sig_id, pyfunc):
         try:
             bridge_ndx = self.__c2py_bridge_ndxs[sig_id]
         except KeyError:
