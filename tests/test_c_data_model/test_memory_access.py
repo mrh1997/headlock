@@ -119,3 +119,6 @@ class TestCMemory:
     def test_ge_ok(self, cmem_obj):
         assert cmem_obj >= b'\x12\x34\x56\x78'
         assert not cmem_obj >= b'\x12\x34\x56\x79'
+
+    def test_repr_ok(self, addrspace):
+        assert repr(CMemory(addrspace, 1, 5)) == f"CMemory({addrspace!r}, 1, 5)"

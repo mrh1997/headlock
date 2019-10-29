@@ -88,9 +88,9 @@ class CMemory:
         return map(self.__getitem__, itertools.count(0))
 
     def __repr__(self):
-        result = f"{type(self).__name__}({hex(self.address)}"
-        if self.max_size is not None:
-            result += f', {self.max_size}'
+        result = f"{type(self).__name__}({self.addrspace!r}, {self.address}"
+        if self.max_address is not None:
+            result += f', {self.max_address}'
         if self.readonly:
             result += f', readonly=True'
         return result + ')'
