@@ -158,7 +158,7 @@ class CStructType(Sequence, CProxyType):
                                  ', '.join(unknown_member_names))
             result = b''
             for member_name in self._members_order_:
-                member = self._members_[member_name]
+                member = self[member_name]
                 try:
                     val = py_val[member_name]
                 except KeyError:

@@ -559,6 +559,13 @@ class TestTestSetup(object):
         with TSMock() as ts:
             assert ts.struct.s_t(44) == dict(a=44)
 
+    def test_structWrapper_onInstanciateWithPointerMember_instantiatesMemberToo(self):
+        TSMock = self.cls_from_ccode(b'struct s_t { char * ptr; };',
+                                     'instanciated_struct_with_ptr.c')
+        with TSMock() as ts:
+            s = ts.struct.s_t(b'TEST')
+            assert s.ptr.ref.mem == b'TEST'
+
     def test_enumWrapper_storesEnumDefInEnumCls(self):
         TSMock = self.cls_from_ccode(b'enum enum_t { a };', 'enum.c')
         with TSMock() as ts:
