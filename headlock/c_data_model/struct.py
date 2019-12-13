@@ -88,8 +88,7 @@ class CStructType(Sequence, CProxyType):
                and self._members_order_ == other._members_order_
 
     def __hash__(self):
-        return sum(map(hash, self),
-                   hash(self.c_definition_full()) + hash(self._packing_))
+        return hash(self.c_definition()) + hash(self._packing_)
 
     def is_anonymous_struct(self):
         return self.struct_name.startswith('__anonymous_')
