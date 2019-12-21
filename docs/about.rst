@@ -36,6 +36,10 @@ C/Python bridges like ctypes, cffi, swig, cython, ...:
     * Vary not only the variables modifyable during runtime for testing
       corner cases but also the preprocessor defines.
 
+ * Exceptions raised in python callbacks (or python mocks) are automaticially
+   forwarded to the calling python code by skipping the C-code-under-test via
+   setjmp() in case of an exception.
+
  * **[PLANNED]** Run the C code in a separate address space to guarentee
    real test isolation. This will not only prevent a crashing test from
    crashing the whole test-runner, but especially avoids

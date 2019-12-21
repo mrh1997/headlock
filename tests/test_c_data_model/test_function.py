@@ -136,8 +136,8 @@ class TestCFuncType:
         result_adr = addrspace.alloc_memory(4)
         param_adr = addrspace.alloc_memory(8)
         addrspace.write_memory(param_adr, b'\x44\x33\x22\x11\x99\x88\x77\x66')
-        sig_id = 'cint f(cint p0, cint p1)'
-        addrspace.invoke_c_func(bridge_adr, sig_id, param_adr, result_adr)
+        c_sig = 'cint f(cint p0, cint p1)'
+        addrspace.invoke_c_func(bridge_adr, c_sig, param_adr, result_adr)
         assert addrspace.read_memory(result_adr, 4) == b'\xDD\xCC\xBB\xAA'
         callback.assert_called_once_with(0x11223344, 0x66778899)
         assert isinstance(callback.call_args[0][0], cdm.CInt)
@@ -152,7 +152,7 @@ class TestCFuncType:
         CPROXY_CLASS.assert_called_once_with(cfunc_type2, 123)
 
     def test_sigId_isCDefinitionWithReferrerF(self, cfunc_type):
-        assert cfunc_type.sig_id == cfunc_type.c_definition('f')
+        assert cfunc_type.c_sig == cfunc_type.c_definition('f')
 
 
 class TestCFunc:

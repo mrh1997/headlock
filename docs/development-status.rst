@@ -19,8 +19,8 @@ The current status of the project
 (preliminary limitations/not yet implemented features)
 is shown in the following list:
 
- * Works only on Windows
- * Requires MingW64 Toolchain
+ * Does not work on macOS
+ * Works only with GCC/Mingw64
  * Requires LLVM
  * Does not support specifying packing of structures in C sources
    (``#pragma pack``).

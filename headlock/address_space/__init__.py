@@ -79,20 +79,21 @@ class AddressSpace:
         """
 
     @abc.abstractmethod
-    def invoke_c_func(self, func_adr:int, sig_id:str,
+    def invoke_c_func(self, func_adr:int, c_sig:str,
                       args_adr:int, retval_adr:int) -> bytes:
         """
         invokes a piece of C code via the bridge for signature of name
-        "sig_id".
+        "c_sig".
         """
 
     @abc.abstractmethod
-    def create_c_callback(self, sig_id:str,
+    def create_c_callback(self, c_sig:str,
                           pyfunc:Callable[[int, int], None]) -> int:
         """
-        Creates a new C function pointer of signature 'sig_id'.
+        Creates a new C function pointer of signature 'c_sig'.
         Everytime this function is called, the call is bridged and
         forwarded to pyfunc.
+        Returns the address of the created C callback.
         """
 
     @abc.abstractmethod

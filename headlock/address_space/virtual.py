@@ -31,15 +31,15 @@ class VirtualAddressSpace(AddressSpace):
             raise TypeError('symbol has to be of type bytes or callable')
         return adr
 
-    def simulate_c_code(self, funcname, exp_sig_id:str=None,
+    def simulate_c_code(self, funcname, exp_c_sig:str=None,
                    exp_params:bytes=None, retval:bytes=None):
         """
         This helper allows to create functions, that can be passed to the
         symbols paramater of __init__. They will verify that invoke_c_func
         was called correctly
         """
-        def c_code(sig_id, args_adr, retval_adr):
-            assert exp_sig_id is None or exp_sig_id == sig_id
+        def c_code(c_sig, args_adr, retval_adr):
+            assert exp_c_sig is None or exp_c_sig == c_sig
             assert exp_params is None \
                    or exp_params == self.read_memory(args_adr, len(exp_params))
             if retval is not None:
@@ -72,15 +72,15 @@ class VirtualAddressSpace(AddressSpace):
         else:
             raise ValueError()
 
-    def invoke_c_func(self, func_adr:int, sig_id:str,
+    def invoke_c_func(self, func_adr:int, c_sig:str,
                       args_adr:int, retval_adr:int):
         func = self.funcs[func_adr]
-        return func(sig_id, args_adr, retval_adr)
+        return func(c_sig, args_adr, retval_adr)
 
-    def create_c_callback(self, sig_id:str, pyfunc):
+    def create_c_callback(self, c_sig:str, pyfunc):
         adr = self.CODE_ADR_OFFSET + len(self.funcs)
-        def callback_wrapper(act_sig_id, param_adr, retval_adr):
-            assert act_sig_id == sig_id
+        def callback_wrapper(act_c_sig, param_adr, retval_adr):
+            assert act_c_sig == c_sig
             return pyfunc(param_adr, retval_adr)
         self.funcs[adr] = callback_wrapper
         return adr

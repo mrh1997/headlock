@@ -1,15 +1,16 @@
-import sys
+import weakref
 from .core import CProxyType, CProxy, InvalidAddressSpaceError
 from .void import CVoidType
 from ..address_space import AddressSpace
-from typing import Union
+from typing import Union, TextIO, List
+from functools import partial
 
 
 class CFuncType(CProxyType):
 
     PRECEDENCE = 20
 
-    def __init__(self, returns:CProxyType=None, args:list=None,
+    def __init__(self, returns:CProxyType=None, args:List[CProxyType]=None,
                  addrspace:AddressSpace=None):
         self.returns = returns
         self.args = args or []
@@ -71,28 +72,28 @@ class CFuncType(CProxyType):
                                  for attr in sorted(self.__c_attribs__))
         return f'CFuncType({self.returns!r}, [{arg_repr_str}]){attr_calls_str}'
 
-    @staticmethod
-    def wrapped_pyfunc(pyfunc, name, arg_types, return_type, addrspace):
-        logger = None
-        def wrapper(params_adr, retval_adr):
-            next_param_adr = params_adr
-            params = []
-            for arg_type in arg_types:
-                params.append(arg_type.create_cproxy_for(next_param_adr).copy())
-                next_param_adr += arg_type.sizeof
+    def bridge_c2py(self, py_callable:callable,
+                    params_adr:int, retval_adr:int,
+                    name:str=None, logger:TextIO=None):
+        next_param_adr = params_adr
+        params = []
+        for arg_type in self.args:
+            params.append(arg_type.create_cproxy_for(next_param_adr).copy())
+            next_param_adr += arg_type.sizeof
+        if logger:
+            if name is None:
+                name = py_callable.__name__ if hasattr(py_callable, '__name__')\
+                       else '<py-callable>'
+            logger.write(f'    {name}({", ".join(map(repr, params))})')
+        retval = py_callable(*params)
+        if self.returns is not None:
+            passed_retval = self.returns.create_cproxy_for(retval_adr)
+            passed_retval.val = retval
             if logger:
-                logger.write('    ' + (name or '<unknown>'))
-                logger.write('('+(', '.join(map(repr, params)))+')')
-            retval = pyfunc(*params)
-            if return_type is not None:
-                passed_retval = return_type.create_cproxy_for(retval_adr)
-                passed_retval.val = retval
-                if logger:
-                    logger.write('->' + repr(retval) + '\n')
-            else:
-                if logger:
-                    logger.write('\n')
-        return wrapper
+                logger.write('->' + repr(retval) + '\n')
+        else:
+            if logger:
+                logger.write('\n')
 
     def __call__(self, init_val:Union[str, callable, int]) -> 'CFunc':
         if self.__addrspace__ is None:
@@ -104,18 +105,14 @@ class CFuncType(CProxyType):
         elif isinstance(init_val, CFunc):
             adr = init_val.__address__
         elif callable(init_val):
-            name = init_val.__name__ if hasattr(init_val, '__name__') \
-                   else 'py-callable'
-            wrapped_func = self.wrapped_pyfunc(init_val, name,
-                                               self.args, self.returns,
-                                               self.__addrspace__)
-            adr = self.__addrspace__.create_c_callback(self.sig_id, wrapped_func)
+            c2py_bridge = partial(self.bridge_c2py, init_val)
+            adr = self.__addrspace__.create_c_callback(self.c_sig, c2py_bridge)
         else:
             adr = init_val
         return self.create_cproxy_for(adr)
 
     @property
-    def sig_id(self) -> str:
+    def c_sig(self) -> str:
         """
         returns unique identification string for this function signature
         """
@@ -157,7 +154,7 @@ class CFunc(CProxy):
         else:
             retval = return_ctype()
             retval_address = retval.__address__
-        addrspace.invoke_c_func(self.__address__, self.ctype.sig_id,
+        addrspace.invoke_c_func(self.__address__, self.ctype.c_sig,
                                 params_bufadr, retval_address)
         return retval
 

@@ -10,12 +10,17 @@ Interface changing
 
 Small (can be done by occassion)
 --------------------------------
+* CModules's "req_libs" shall be added to CMakeLists.txt by 
+  plugin_headlock_debug.py
 * Guarantee that access to internal structs is provided. 
   Currently it may happen that during merging the parse results of multiple 
   C files the struct definition wins, which contains no member definition. 
 * Create new type of CStruct for every instance  of CStructType, which contains
   descriptors for member access (see TestSetup.CProxyDescriptor). This will
   prevent accitientially writing structmembers via "ts.struct.x.y = 3"
+* Create an Alias with a standardname if only one TestSetup is used 
+  (this way debugging has not to be re-setup when switching testsetups).
+  Maybe even merge all CMakeLists.txt into .pytest-headlock/CMakeLists.txt. 
 * CProxyDescriptor returns a CProxyType object, if the containing
   testsetup is not instantiated yet. This is confusing behaviour, as
   sometimes is returned a CProxy and sometimes a CProxyType
@@ -38,6 +43,8 @@ Small (can be done by occassion)
 * add repr function to CObjTypes
 * enums/floats are not supported yet
 * Option to make warnings to errors (can only be done if cdecl warning can be moved away)
+* Add ``__set__()`` to CObj type which throws error to ensures that 
+  ``ts.global = 3`` or ``ts.struct.x.y = 3`` fails
 * Replace _global_refs_ dictionary by option during creation of object.
   When settings this option the element is not freed until destruction
   of testsetup
@@ -55,6 +62,8 @@ Small (can be done by occassion)
   creating a testsetup in a playground gives reasonable error messages
 * move VarPtr and MemPtr from pytest-plugin to headlock as they are
   not pytest specific (but specific to unittest.mock or similar)
+* raise exception when writing a proxy without ".val". i.e.
+  "x.ref = 2"
 * raise error if detecting "__declspec(dllexport)" (does not work,
   but currently gives no obvious error message)
 * add cobj.copy() to allow quick and easy duplicating a C object.
