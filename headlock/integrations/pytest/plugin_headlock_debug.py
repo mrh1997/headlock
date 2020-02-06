@@ -112,6 +112,11 @@ def pytest_runtest_logreport(report):
 
 class CMakeFileGenerator(default.BUILDDESC_CLS):
 
+    def __init__(self, *args, **argv):
+        super().__init__(*args, **argv)
+        self.__req_libs = []
+        self.__lib_dirs = []
+
     @staticmethod
     def escape(str):
         if '"' in str or '(' in str or ')' in str:
@@ -128,6 +133,14 @@ class CMakeFileGenerator(default.BUILDDESC_CLS):
                         tuple(sorted(incl_dirs[c_src]))
             param_sets[param_set].append(c_src)
         return list(param_sets.values())
+
+    def add_lib_dir(self, lib_dir:Path):
+        super().add_lib_dir(lib_dir)
+        self.__lib_dirs.append(lib_dir)
+
+    def add_req_lib(self, lib_name:str):
+        super().add_req_lib(lib_name)
+        self.__req_libs.append(lib_name)
 
     def generate_cmakelists(self, additonal_c_sources):
         def add_lib_desc(lib_name, lib_type, c_srcs):
@@ -177,16 +190,14 @@ class CMakeFileGenerator(default.BUILDDESC_CLS):
                                         additonal_c_sources)
         compile_opts = getattr(self, 'ADDITIONAL_COMPILE_OPTIONS', [])
         link_opts = getattr(self, 'ADDITIONAL_LINK_OPTIONS', [])
-        lib_dirs = getattr(self, 'lib_dirs', [])
-        req_libs = getattr(self, 'req_libs', [])
         if compile_opts:
             yield f"add_compile_options({' '.join(compile_opts)})\n"
         if link_opts:
             yield f"set(CMAKE_EXE_LINKER_FLAGS \"{' '.join(link_opts)}\")\n"
-        if lib_dirs:
-            yield f'link_directories({" ".join(lib_dirs)})\n'
-        if req_libs:
-            req_libs_str = ' '.join(req_libs)
+        if self.__lib_dirs:
+            yield f'link_directories({" ".join(self.__lib_dirs)})\n'
+        if self.__req_libs:
+            req_libs_str = ' '.join(self.__req_libs)
             yield f'target_link_libraries({main_lib_name} {req_libs_str})\n'
         yield f'set_target_properties({main_lib_name} PROPERTIES\n' \
               f'                      RUNTIME_OUTPUT_DIRECTORY ${{CMAKE_CURRENT_SOURCE_DIR}}\n' \
