@@ -10,6 +10,9 @@ Interface changing
 
 Small (can be done by occassion)
 --------------------------------
+* Mark proxies as "don't autorelease" as soon as their address was taken (x.ref).
+  This would allow to pass complex python datastructures to a complex data structure 
+  C type and implicitly create the inner structures without releasing them immediately.
 * CModules's "req_libs" shall be added to CMakeLists.txt by 
   plugin_headlock_debug.py
 * Guarantee that access to internal structs is provided. 
@@ -24,7 +27,7 @@ Small (can be done by occassion)
 * CProxyDescriptor returns a CProxyType object, if the containing
   testsetup is not instantiated yet. This is confusing behaviour, as
   sometimes is returned a CProxy and sometimes a CProxyType
-  How could a more consistent behaviour be designedﬂ
+  How could a more consistent behaviour be designed√ü
 * Add multi-threading support to exception forwarding
 * Replace .base_type by .ref_type (ptr) and .element_type (array)
 * add "ts.unsigned" and "ts.signed" (to support casts like "((unsigned) (x))")
@@ -139,7 +142,7 @@ Medium
   type (i.e. cannot compare pointer to int)
 * CParser cannot read macros with &&, ||, ! operators
   (has to be converted to and/or/not)
-* wird "with ts:" verschachtelt aufgerufen, h‰ngt sich headlock auf
+* wird "with ts:" verschachtelt aufgerufen, h√§ngt sich headlock auf
 * generator for .pyi files, so that type-completion works on testsetups
   (to make it work on testsetups you have to enter "test_xyt(ts:ts):"
    then)
