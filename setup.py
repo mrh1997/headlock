@@ -23,6 +23,7 @@ setup(
               'headlock.integrations.pytest',
               'headlock.libclang',
               'headlock.buildsys_drvs'],
+    install_requires=['pytcc'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Operating System :: Microsoft :: Windows',
