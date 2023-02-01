@@ -69,6 +69,9 @@ class CArrayType(CProxyType):
         try:
             return super().convert_to_c_repr(py_val)
         except NotImplementedError:
+            if isinstance(py_val, (bytes, bytearray)) and \
+                    self.base_type.sizeof == 1:
+                return py_val + (b'\x00' * (self.sizeof - len(py_val)))
             if isinstance(py_val, Iterable):
                 payload = b''.join(map(self.base_type.convert_to_c_repr,py_val))
                 return payload + (b'\x00' * (self.sizeof - len(payload)))
@@ -134,20 +137,6 @@ class CArray(CProxy):
 
     def __iter__(self):
         return (self[ndx] for ndx in range(self.element_count))
-
-    @property
-    def val(self):
-        return [self[ndx].val for ndx in range(self.element_count)]
-
-    @val.setter
-    def val(self, new_val):
-        if isinstance(new_val, str):
-            new_val = map_unicode_to_list(new_val, self.base_type)
-        ndx = 0
-        for ndx, val in enumerate(new_val):
-            self[ndx].val = val
-        for ndx2 in range(ndx+1, self.element_count):
-            self[ndx2].val = self.base_type.null_val
 
     @property
     def c_str(self):

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import headlock.c_data_model as cdm
 from headlock.address_space.virtual import VirtualAddressSpace
-
+from time import time
 
 
 @pytest.fixture
@@ -111,10 +111,14 @@ class TestCArray:
 
     def create_int_carray_obj(self, bits, init_val):
         cint_type = cdm.CIntType('i'+str(bits), bits, False, cdm.ENDIANESS)
-        content = b''.join(map(cint_type.convert_to_c_repr, init_val))
+        if isinstance(init_val, int):
+            content = b'\00' * (bits//8 * init_val)
+            size = init_val
+        else:
+            content = b''.join(map(cint_type.convert_to_c_repr, init_val))
+            size = len(init_val)
         addrspace = VirtualAddressSpace(content)
-        carray_type = cdm.CArrayType(cint_type.bind(addrspace), len(init_val),
-                                     addrspace)
+        carray_type = cdm.CArrayType(cint_type.bind(addrspace), size, addrspace)
         return cdm.CArray(carray_type, 0)
 
     def test_str_returnsStringWithZeros(self):
@@ -146,6 +150,29 @@ class TestCArray:
         carray_obj = self.create_int_carray_obj(16, [111] * 6)
         carray_obj.unicode_str = '\u1234\x56\0\x78'
         assert carray_obj.val == [0x1234, 0x56, 0, 0x78, 0, 0]
+
+    def test_init_onVeryBigBytesObject_providesOptimizedImplementation(self):
+        big_array_size = 1000000
+        array = self.create_int_carray_obj(8, big_array_size+1)
+        start_timestamp = time()
+        array.ctype(b'\x00' * big_array_size)
+        assert time() - start_timestamp < 0.050
+
+    def test_setVal_onComplexStructure_convertsBaseType(self):
+        array = self.create_int_carray_obj(32, 2)
+        array.val = [0x01234567, 0x89ABCDEF]
+        assert array.val == [0x01234567, 0x89ABCDEF]
+
+    def test_setVal_onVeryBigBytesObject_providesOptimizedImplementation(self):
+        big_array_size = 1000000
+        array = self.create_int_carray_obj(8, big_array_size+1)
+        start_timestamp = time()
+        array.val = b'\x00' * big_array_size
+        assert time() - start_timestamp < 0.050
+
+    def test_getVal_onComplexStructure_convertsBaseType(self):
+        array = self.create_int_carray_obj(32, [0x01234567, 0x89ABCDEF])
+        assert array.val == [0x01234567, 0x89ABCDEF]
 
     def test_getItem_returnsObjectAtNdx(self):
         carray_obj = self.create_int_carray_obj(16, [1, 2, 3, 4])
