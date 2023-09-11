@@ -249,8 +249,11 @@ class CParser:
         except KeyError:
             pytype = (CStructType if cmpnd_crs.kind == CursorKind.STRUCT_DECL
                       else CUnionType)
-            struct_type = pytype(cmpnd_crs.displayname,
-                                    packing=self.DEFAULT_PACKING)
+            if cmpnd_crs.displayname.startswith("struct (unnamed at"):
+                name = ""
+            else:
+                name = cmpnd_crs.displayname
+            struct_type = pytype(name, packing=self.DEFAULT_PACKING)
             self.structs[struct_type.struct_name] = struct_type
         else:
             if struct_type._members_:
@@ -277,8 +280,8 @@ class CParser:
         return enum_type
 
     def convert_datatype_decl_from_cursor(self, cursor:Type) \
-            -> Union[CStruct, CEnum]:
-        if cursor.displayname:
+            -> Union[CStruct, CEnum, CUnion]:
+        if cursor.displayname and not "(unnamed at" in cursor.displayname:
             if cursor.kind == CursorKind.STRUCT_DECL:
                 return self.convert_compount_from_cursor(cursor)
             elif cursor.kind == CursorKind.ENUM_DECL:

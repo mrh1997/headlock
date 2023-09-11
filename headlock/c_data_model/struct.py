@@ -212,7 +212,8 @@ class CStruct(CProxy):
 
     @val.setter
     def val(self, new_val):
-        if isinstance(new_val, (collections.Sequence, collections.Iterator)):
+        if isinstance(new_val,
+                      (collections.abc.Sequence, collections.abc.Iterator)):
             new_val = dict(zip(self.ctype._members_order_, new_val))
         for name in self.ctype._members_order_:
             member = self[name]

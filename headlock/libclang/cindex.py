@@ -63,7 +63,7 @@ call is efficient.
 # o implement additional SourceLocation, SourceRange, and File methods.
 
 from ctypes import *
-import collections
+import collections.abc
 import re
 
 from . import enumerations
@@ -1941,7 +1941,7 @@ class Type(Structure):
         The returned object is iterable and indexable. Each item in the
         container is a Type instance.
         """
-        class ArgumentsIterator(collections.Sequence):
+        class ArgumentsIterator(collections.abc.Sequence):
             def __init__(self, parent):
                 self.parent = parent
                 self.length = None
@@ -1972,6 +1972,7 @@ class Type(Structure):
 
         assert self.kind == TypeKind.FUNCTIONPROTO \
                or self.kind == TypeKind.FUNCTIONNOPROTO \
+               or self.kind == TypeKind.ELABORATED \
                or self.kind == TypeKind.UNEXPOSED  # bug in libclang on funcptrs
         return ArgumentsIterator(self)
 

@@ -550,7 +550,7 @@ class TestTestSetup(object):
                                      b'void func(t * a);',
                                      'anonymous_structs_typedef.c')
         with TSMock() as ts:
-            anon_cstruct_type = getattr(ts.struct, '__anonymousfromtypedef__t')
+            anon_cstruct_type = ts.t
             assert not anon_cstruct_type.is_anonymous_struct()
 
     def test_structWrapper_onInstanciate_bindsAddrSpace(self):

@@ -13,6 +13,7 @@ ENDIANESS = 'little'
 
 def free_cdll(cdll):
     if sys.platform == 'win32':
+        ct.windll.kernel32.FreeLibrary.argtypes = [ct.wintypes.HMODULE]
         ct.windll.kernel32.FreeLibrary(cdll._handle)
     elif sys.platform == 'linux':
         libdl = ct.CDLL('libdl.so')
