@@ -1,6 +1,5 @@
+import os
 from pathlib import Path
-import sys
-import platform
 import itertools
 import fnmatch
 from typing import List, Dict, Any
@@ -11,6 +10,11 @@ except ImportError:
 
 from . import BuildError, gcc
 
+
+MINGW_DIR = {
+    "mingw32": ("MINGW_I686_DIR", "C:\Program Files (x86)\mingw32"),
+    "mingw64": ("MINGW_X86_64_DIR", "C:\Program Files\mingw64")
+}
 
 BUILD_CACHE = set()
 
@@ -28,18 +32,28 @@ class MinGWBuildDescription(gcc.GccBuildDescription):
                  req_libs:List[str]=None, version:str=None,
                  thread_model:str=None, exception_model:str=None, rev:str=None,
                  mingw_install_dir:Path=None):
-        if mingw_install_dir is None:
-            arch, plat, compiler = self.clang_target().split('-')
-            self.mingw_install_dir = self._autodetect_mingw_dir(
-                version, thread_model, exception_model, rev)  / compiler
-        else:
+        if mingw_install_dir is not None:
             self.mingw_install_dir = mingw_install_dir
-        gcc_executable = str(self.mingw_install_dir / 'bin' / 'gcc')
+        else:
+            arch, plat, compiler = self.clang_target().split('-')
+            mingw_dir_varname, mingw_dir_default = MINGW_DIR[compiler]
+            if mingw_dir_varname in os.environ:
+                self.mingw_install_dir = (
+                    Path(os.environ.get(mingw_dir_varname, mingw_dir_default)))
+            else:
+                try:
+                    self.mingw_install_dir = self._autodetect_mingw_dir(
+                        version, thread_model, exception_model, rev)  / compiler
+                except BuildError:
+                    self.mingw_install_dir = Path(mingw_dir_default)
+        gcc_executable = self.mingw_install_dir / 'bin' / 'gcc.exe'
+        if not gcc_executable.exists():
+            raise OSError("MinGW compiler not found: " + str(gcc_executable))
         super().__init__(
             name, build_dir, unique_name,
             c_sources=c_sources, predef_macros=predef_macros,
             incl_dirs=incl_dirs, lib_dirs=lib_dirs, req_libs=req_libs,
-            gcc_executable=gcc_executable)
+            gcc_executable=str(gcc_executable))
 
     @classmethod
     def _autodetect_mingw_dir(cls, version, thread_model, exception_model, rev):
@@ -97,11 +111,13 @@ class MinGWBuildDescription(gcc.GccBuildDescription):
 
 class MinGW32BuildDescription(MinGWBuildDescription):
     ARCHITECTURE = 'i686'
+
     def clang_target(self):
         return 'i386-pc-mingw32'
 
 
 class MinGW64BuildDescription(MinGWBuildDescription):
     ARCHITECTURE = 'x86_64'
+
     def clang_target(self):
         return 'x86_64-pc-mingw64'

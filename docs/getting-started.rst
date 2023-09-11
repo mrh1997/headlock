@@ -16,7 +16,8 @@ Higher versions should work nevertheless.
    Version 3.6 or higher is required 
  * `LLVM <http://releases.llvm.org/download.html>`_ (Version 7.0.0 or higher).
  * GCC is required (in case of Windows
-   `MinGW64 <http://mingw-w64.org/doku.php/download/mingw-builds>`_ is needed).
+   `MinGW <https://winlibs.com/>`_ at `C:\Program Files\mingw64`
+   respective `C:\Program Files (x86)\mingw32` is needed).
    Later other C compilers shall :ref:`be supported <dev-status>`!
 
 
