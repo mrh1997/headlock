@@ -84,10 +84,11 @@ class MacroDef:
         if not isinstance(other, MacroDef):
             return NotImplemented
         else:
-            return self.name == other.name \
-                   and self.code == other.code \
-                   and self.params == other.params \
-                   and self.valid == other.valid
+            return (self.name == other.name
+                   and ((not self.code or self.code.co_code) ==
+                        (not other.code or other.code.co_code))
+                   and self.params == other.params
+                   and self.valid == other.valid)
 
     def __ne__(self, other):
         return not self == other
