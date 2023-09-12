@@ -218,8 +218,10 @@ class CMakeFileGenerator(default.BUILDDESC_CLS):
         if master_cmakelist:
             master_cmakelist_path = Path(master_cmakelist)
             master_cmakelist_dir = master_cmakelist_path.parent.resolve()
-            rel_build_dir = os.path.relpath(self.build_dir,
-                                            str(master_cmakelist_dir))
+            try:
+                rel_build_dir = self.build_dir.relative_to(master_cmakelist_dir)
+            except ValueError:
+                rel_build_dir = self.build_dir.absolute()
             rel_build_dir_str = str(rel_build_dir).replace('\\', '/')
             if master_cmakelist_path.exists():
                 lines = master_cmakelist_path.open().readlines()
