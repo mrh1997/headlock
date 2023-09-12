@@ -8,7 +8,7 @@ import warnings
 from typing import Dict, List, Any, ByteString, Union
 
 from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
-    TranslationUnit, Config, TranslationUnitLoadError, Cursor, Type
+    TranslationUnit, Config, TranslationUnitLoadError, LibclangError, Type
 from .c_data_model import BuildInDefs, CProxyType, CFuncType, CStructType, \
     CUnionType, CEnumType, CVectorType, CStruct, CUnion, CEnum, CArrayType
 
@@ -438,6 +438,9 @@ class CParser:
                      + ([] if not self.target_compiler
                         else [f'--target={self.target_compiler}']),
                 options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
+        except LibclangError as e:
+            raise ParseError(str(e) + "\nMaybe libclang library is not found. "
+                             "You might specify its path with LLVM_DIR")
         except TranslationUnitLoadError as e:
             raise FileNotFoundError(
                 f'File {os.fspath(file_name)} cannot be opened/is invalid') \

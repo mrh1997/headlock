@@ -1,0 +1,41 @@
+name: Build headlock and run unittests
+on: [push]
+
+jobs:
+
+  ###################################################
+  unittests:
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [3.6, 3.7, 3.8, 3.9, "3.10", 3.11]
+        os: [windows-2022]
+        arch: [x64]
+
+    runs-on: ${{matrix.os}}
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v1.2.0
+        with:
+          submodules: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{matrix.python}}
+          architecture: ${{matrix.arch}}
+
+      - name: Install tox
+        shell: bash
+        run: pip install tox==3.15
+
+      - name: Run Unittests
+        shell: bash
+        run: |
+          if [ ${{matrix.os}} = "windows-2022" ]
+          then export MINGW_X86_64_DIR=C:/ProgramData/chocolatey/lib/mingw/tools/install/mingw64
+          fi
+          tox -e py${{matrix.python}}-${{matrix.arch}}
