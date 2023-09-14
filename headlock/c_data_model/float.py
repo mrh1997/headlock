@@ -8,6 +8,10 @@ class CFloatType(CProxyType):
         self.bits = bits
         self.c_name = c_name
 
+    @property
+    def alignment(self):
+        return self.sizeof
+
 
 class CFloat(CProxy):
     """This is a dummy yet"""
