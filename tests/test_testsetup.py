@@ -635,6 +635,14 @@ class TestTestSetup(object):
         with TSDummy() as ts:
             assert '__cdecl' in ts.cdecl_func.ctype.__c_attribs__
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="windows only")
+    def test_windowsHeaderFiles_ok(self, tmpdir):
+        TSDummy = self.cls_from_ccode(b'#include <windows.h>',
+                                      'include_windows_h.c')
+        with TSDummy() as ts:
+            pass
+
+
 
 class TestCModule:
 

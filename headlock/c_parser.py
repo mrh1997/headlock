@@ -206,10 +206,17 @@ class CParser:
         'punpcklwd128': '__m128d', 'punpckldq128': '__m128d',
         'punpcklqdq128': '__m128d', 'pandn128': '__m128d',
         'pavgb128': '__m128d', 'pavgw128': '__m128d',
+        'cvtsi642ss': '__m128', 'cvtsi642ss': '__m128', 'cvtsi642sd': '__m128d',
+        'cvtsi642sd': '__m128d', 'paddsb128': '__m128i', 'paddsw128': '__m128i',
+        'paddusb128': '__m128i', 'paddusw128': '__m128i',
+        'psubsb128': '__m128i', 'psubsw128': '__m128i', 'psubusb128': '__m128i',
+        'psubusw128': '__m128i', 'pmaxsw128': '__m128i', 'pmaxub128': '__m128i',
+        'pminsw128': '__m128i', 'pminub128': '__m128i',
         'movntps': '__m128', 'movntdq': '__m128', 'movntpd': '__m128'}
     GCC_ZEROTYPE_MAP = {
         '__m128': '_mm_setzero_ps()', '__v4sf': '_mm_setzero_ps()',
-        '__m128d': '_mm_setzero_pd()', 'int': '0'}
+        '__m128d': '__extension__(__m128){0,0,0,0}', 'int': '0',
+        '__m128i': '_mm_setzero_pd()'}
 
     def __init__(self, predef_macros:Dict[str, Any]=None,
                  include_dirs:List[Path]=None,
@@ -423,7 +430,11 @@ class CParser:
                             '_mm_pause': '_mm_pause_CLANG',
                             '_mm_clflush': '_mm_clflush_CLANG',
                             '_mm_lfence': '_mm_lfence_CLANG',
-                            '_mm_mfence': '_mm_mfence_CLANG'})
+                            '_mm_mfence': '_mm_mfence_CLANG',
+                            '__rdtsc': '__rdtsc_CLANG',
+                            '__builtin_shuffle(...)':
+                                self.GCC_ZEROTYPE_MAP['__m128d'],
+                            '__iamcu__': '1'})
             predefs.update({
                 f'__builtin_ia32_{nm}(...)': self.GCC_ZEROTYPE_MAP[tp]
                 for nm, tp in self.GCC_VECTOR_BUILTINS.items()})

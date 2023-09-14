@@ -1130,6 +1130,8 @@ CursorKind.VISIBILITY_ATTR = CursorKind(417)
 CursorKind.DLLEXPORT_ATTR = CursorKind(418)
 CursorKind.DLLIMPORT_ATTR = CursorKind(419)
 
+CursorKind.ALIGNED_ATTR = CursorKind(441)
+
 ###
 # Preprocessing
 CursorKind.PREPROCESSING_DIRECTIVE = CursorKind(500)
