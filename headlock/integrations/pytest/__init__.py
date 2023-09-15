@@ -21,7 +21,7 @@ def testsetup_fixture(cls):
         def TS_sample(ts):
             assert isinstance(ts, TestSetup)
     """
-    @pytest.yield_fixture
+    @pytest.fixture
     def ts_fixture(self=None):
         with cls() as ts:
             yield ts

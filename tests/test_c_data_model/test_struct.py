@@ -231,31 +231,31 @@ class TestCStructType:
         assert list(cstruct_type) == []
 
     def test_eq_onSameType_returnsTrue(self, unbound_cint_type):
-        return cdm.CStructType('sname', [('mname', unbound_cint_type)]) \
+        assert cdm.CStructType('sname', [('mname', unbound_cint_type)]) \
                == cdm.CStructType('sname', [('mname', unbound_cint_type)])
 
     def test_eq_onDifferentType_returnsFalse(self, unbound_cstruct_type):
         assert not unbound_cstruct_type == "test"
 
     def test_eq_onDifferentPacking_returnsFalse(self, unbound_cint_type):
-        return cdm.CStructType('sname', [('mname', unbound_cint_type)], packing=1) \
-               == cdm.CStructType('sname', [('mname', unbound_cint_type)], packing=2)
+        assert cdm.CStructType('sname', [('mname', unbound_cint_type)], packing=1) \
+               != cdm.CStructType('sname', [('mname', unbound_cint_type)], packing=2)
 
     def test_eq_onDifferentMemberNames_returnsFalse(self, unbound_cint_type):
-        return cdm.CStructType('sname', [('mname', unbound_cint_type)]) \
-               == cdm.CStructType('sname', [('other_mname', unbound_cint_type)])
+        assert cdm.CStructType('sname', [('mname', unbound_cint_type)]) \
+               != cdm.CStructType('sname', [('other_mname', unbound_cint_type)])
 
     def test_eq_onDifferentMemberTypes_returnsFalse(self, unbound_cint_type, unbound_cint16_type):
-        return cdm.CStructType('sname', [('mname', unbound_cint_type)]) \
-               == cdm.CStructType('sname', [('mname', unbound_cint16_type)])
+        assert cdm.CStructType('sname', [('mname', unbound_cint_type)]) \
+               != cdm.CStructType('sname', [('mname', unbound_cint16_type)])
 
     def test_eq_onDifferentMemberCount_returnsFalse(self, unbound_cint_type):
-        return cdm.CStructType('sname', [('m1', unbound_cint_type),
+        assert cdm.CStructType('sname', [('m1', unbound_cint_type),
                                          ('m2', unbound_cint_type)])\
                != cdm.CStructType('sname', [('m1', unbound_cint_type)])
 
     def test_eq_onDifferentMemberOrder_returnsFalse(self, unbound_cint_type, unbound_cint16_type):
-        return cdm.CStructType('sname', [('m1', unbound_cint16_type),
+        assert cdm.CStructType('sname', [('m1', unbound_cint16_type),
                                          ('m2', unbound_cint_type)])\
                != cdm.CStructType('sname', [('m1', unbound_cint_type),
                                             ('m2', unbound_cint16_type)])

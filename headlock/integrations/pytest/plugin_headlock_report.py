@@ -41,7 +41,7 @@ class TestSetupModule(pytest.Module):
 
 def pytest_pycollect_makemodule(path, parent):
     if hasattr(TestSetupModule, "from_parent"):
-        return TestSetupModule.from_parent(parent, name=path, fspath=path)
+        return TestSetupModule.from_parent(parent, name=path, path=Path(path))
     else:
         # pytest < 6.0 had a different API
         # (see https://docs.pytest.org/en/stable/deprecations.html#node-construction-changed-to-node-from-parent )
