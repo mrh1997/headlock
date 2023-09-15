@@ -146,6 +146,8 @@ class MacroDef:
         src_code = src_code.replace('/', '//')
         src_code = src_code.replace('?', 'and')
         src_code = src_code.replace(':', 'or')
+        src_code = src_code.replace('\r\n', '\n')
+        src_code = src_code.replace('\\\n', ' ')
         src_code = src_code.strip()
         valid = True
         if src_code == '':

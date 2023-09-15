@@ -139,6 +139,9 @@ class TestMacroDef:
             MacroDef.create_from_srccode(r'MACRO  "\n"')
         assert not warning_list
 
+    def test_createFromSrcCode_onStringWithEscapedNewline_ignoreNewLine(self):
+        self.assert_create_as('MACRO \\\r\n\t 4\\\n +3', exp_expr='4+3')
+
     def test_get_onResolveStructAttr_ok(self):
         class Container:
             strct = Mock()
