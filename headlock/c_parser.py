@@ -36,7 +36,8 @@ class ParseError(Exception):
         self.errors = errs
 
     def __str__(self):
-        return f'{len(self.errors)} compile errors'
+        desc, fname, fline = self.errors[0]
+        return f'{len(self.errors)} compile errors ({desc} in {fname}:{fline})'
 
     def __iter__(self):
         yield from self.errors
