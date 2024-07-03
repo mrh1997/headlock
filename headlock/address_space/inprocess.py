@@ -1,6 +1,7 @@
 from platform import architecture
 from typing import Callable, List, Set
 import ctypes as ct
+from ctypes import wintypes
 import sys
 from threading import local
 from collections import defaultdict
@@ -13,7 +14,7 @@ ENDIANESS = 'little'
 
 def free_cdll(cdll):
     if sys.platform == 'win32':
-        ct.windll.kernel32.FreeLibrary.argtypes = [ct.wintypes.HMODULE]
+        ct.windll.kernel32.FreeLibrary.argtypes = [wintypes.HMODULE]
         ct.windll.kernel32.FreeLibrary(cdll._handle)
     elif sys.platform == 'linux':
         libdl = ct.CDLL('libdl.so')
