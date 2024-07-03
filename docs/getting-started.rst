@@ -65,7 +65,6 @@ incrementing a given integer by the macro ``INCREMENT_OFFSET``
 
     int increment(int number)
     {
-
         return number + INCREMENT_OFFSET;
     }
 
@@ -78,12 +77,12 @@ incrementing a given integer by the macro ``INCREMENT_OFFSET``
     struct add_operands_t {
         int op1, op2;
     };
-    extern int adder(struct add_operands_t * ops);
+    extern int external_adder(struct add_operands_t * ops);
 
     int increment_via_extfunc(int number)
     {
         // adder_from_other_module() is not part of this file!
-        struct add_operands_t ops = { number, INCREMENT_OFFSET);
+        struct add_operands_t ops = { number, INCREMENT_OFFSET };
         return external_adder(&ops);
     }
 
@@ -96,7 +95,8 @@ test if their result is correct::
 
    @CModule('test.c', INCREMENT_OFFSET=1)
    class TSSample(TestSetup):
-       pass
+       def external_adder_mock(self, ops):
+           return ops.ref.op1 + ops.ref.op2
 
    ts = TSSample()
 
