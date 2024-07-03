@@ -36,6 +36,6 @@ jobs:
         shell: bash
         run: |
           if [ ${{matrix.os}} = "windows-2022" ]
-          then export MINGW_X86_64_DIR=C:/ProgramData/chocolatey/lib/mingw/tools/install/mingw64
+          then export MINGW_X86_64_DIR=C:/mingw64
           fi
           tox -e py${{matrix.python}}-${{matrix.arch}}
