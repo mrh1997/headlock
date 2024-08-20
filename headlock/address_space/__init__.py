@@ -1,9 +1,8 @@
 """
 This is for headlock internal use only!
 """
-from typing import Tuple, Callable
+from typing import Tuple, Callable, Union
 import abc
-from collections.abc import ByteString
 
 
 class MemoryManagementError(Exception):
@@ -50,7 +49,7 @@ class AddressSpace:
         """
 
     @abc.abstractmethod
-    def write_memory(self, address:int, data:ByteString):
+    def write_memory(self, address:int, data:Union[bytes, bytearray]):
         """
         Writes a specific amount of Memory (in bytes) to the address space.
         The caller has to ensure that the specified memory range is valid,

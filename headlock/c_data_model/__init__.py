@@ -56,7 +56,7 @@ class PtrArrFactoryMixIn(CProxyType):
                 initval = list(initval)
             elif isinstance(initval, str):
                 initval = array.map_unicode_to_list(initval, self)
-            elif isinstance(initval, collections.abc.ByteString):
+            elif isinstance(initval, (bytes, bytearray)):
                 initval = initval + b'\0'
             return self.array(len(initval))(initval)
         else:

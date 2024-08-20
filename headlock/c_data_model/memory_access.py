@@ -1,7 +1,6 @@
 import functools
 import itertools
 from typing import Union
-from collections.abc import ByteString
 
 from ..address_space import AddressSpace
 
@@ -64,7 +63,7 @@ class CMemory:
             self.__check_slice(self.__ndx_to_slice(ndx))
             return self.addrspace.read_memory(self.address + ndx, 1)[0]
 
-    def __setitem__(self, ndx:Union[int, slice], value:Union[int, ByteString]):
+    def __setitem__(self, ndx:Union[int, slice], value:Union[int, bytes, bytearray]):
         if self.readonly:
             raise WriteProtectError()
         if isinstance(ndx, slice):

@@ -39,7 +39,7 @@ class CIntType(CProxyType):
         try:
             return super().convert_to_c_repr(py_val)
         except NotImplementedError:
-            if isinstance(py_val, (collections.abc.ByteString, str)):
+            if isinstance(py_val, (bytes, bytearray, str)):
                 py_val = ord(py_val)
             cutted_val = py_val & (self.__max_val - 1)
             return cutted_val.to_bytes(self.sizeof, self.endianess)

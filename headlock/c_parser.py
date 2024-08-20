@@ -5,7 +5,7 @@ import sys
 import platform
 from pathlib import Path
 import warnings
-from typing import Dict, List, Any, ByteString, Union
+from typing import Dict, List, Any, Union
 
 from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
     TranslationUnit, Config, TranslationUnitLoadError, LibclangError, Type

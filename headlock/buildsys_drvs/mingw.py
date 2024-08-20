@@ -12,8 +12,8 @@ from . import BuildError, gcc
 
 
 MINGW_DIR = {
-    "mingw32": ("MINGW_I686_DIR", "C:\Program Files (x86)\mingw32"),
-    "mingw64": ("MINGW_X86_64_DIR", "C:\Program Files\mingw64")
+    "mingw32": ("MINGW_I686_DIR", r"C:\Program Files (x86)\mingw32"),
+    "mingw64": ("MINGW_X86_64_DIR", r"C:\Program Files\mingw64")
 }
 
 BUILD_CACHE = set()
