@@ -12,6 +12,11 @@ jobs:
         python: ["3.10", 3.11, 3.12, 3.13, 3.14]
         os: [windows-2025, ubuntu-24.04]
         arch: [x64]
+        include:
+          # Only test macOS on latest Python version
+          - os: macos-15
+            python: 3.14
+            arch: x64
 
     runs-on: ${{matrix.os}}
 

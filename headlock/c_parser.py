@@ -21,6 +21,16 @@ if sys.platform == 'win32':
 elif sys.platform == 'linux':
     import glob
     default_llvm_dir = max(glob.glob(r'/usr/lib/llvm-*/lib'))
+elif sys.platform == 'darwin':
+    import glob
+    # Try Homebrew installation first, then system locations
+    homebrew_paths = glob.glob('/usr/local/opt/llvm*/lib') + \
+                     glob.glob('/opt/homebrew/opt/llvm*/lib')
+    if homebrew_paths:
+        default_llvm_dir = max(homebrew_paths)
+    else:
+        # Fallback to Xcode Command Line Tools
+        default_llvm_dir = '/Library/Developer/CommandLineTools/usr/lib'
 else:
     raise NotImplementedError('This operating system is not supported yet')
 Config.set_library_path(os.environ.get('LLVM_DIR', default_llvm_dir))

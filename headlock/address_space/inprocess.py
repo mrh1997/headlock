@@ -26,6 +26,9 @@ def free_cdll(cdll):
         libdl.dlclose.argtypes = [ct.c_void_p]
         libdl.dlclose.restype = ct.c_int
         libdl.dlclose(cdll._handle)
+    elif sys.platform == 'darwin':
+        libdl = ct.CDLL('libdl.dylib')
+        libdl.dlclose(cdll._handle)
     else:
         raise NotImplementedError('the platform is not supported yet')
 
