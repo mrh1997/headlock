@@ -1,4 +1,4 @@
-#!python3.6
+#!python3.10
 # -*- coding: utf-8 -*-
 from setuptools import setup
 from headlock import __version__
@@ -28,13 +28,11 @@ setup(
         'Operating System :: Microsoft :: Windows',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
+        'Programming Language :: Python :: 3.14',
         'Programming Language :: C',
         'Topic :: Software Development :: Testing',
     ],
