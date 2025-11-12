@@ -450,7 +450,8 @@ class CParser:
                         for mname, mval in predefs.items()]
                      + list(sys_inc_dir_args(self.sys_include_dirs))
                      + ([] if not self.target_compiler
-                        else [f'--target={self.target_compiler}']),
+                        else [f'--target={self.target_compiler}'])
+                    + ['-ferror-limit=0'],
                 options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
         except LibclangError as e:
             raise ParseError(str(e) + "\nMaybe libclang library is not found. "
@@ -465,11 +466,12 @@ class CParser:
             if not self.is_sys_hdr(incl_file_path):
                 self.source_files.add(self.resolve(incl_file_path))
         errors = [diag for diag in tu.diagnostics
-                   if diag.severity >= diag.Error]
+                   if diag.severity >= diag.Error
+                   and not (diag.location.file is not None and self.is_sys_hdr(str(diag.location.file)))]
         if errors:
             raise ParseError([
-                (err.spelling, err.location.file.name, err.location.line)
-                for err in errors if err.location.file is not None])
+                (err.spelling, err.location.file.name if err.location.file else "<unknown>", err.location.line)
+                for err in errors[:20]])
         self.read_from_cursor(tu.cursor)
         filenames = set(map(operator.itemgetter(0), self.macro_locs.values()))
         files = {self.resolve(fn): Path(fn).read_bytes() for fn in filenames}
