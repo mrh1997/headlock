@@ -1130,6 +1130,7 @@ CursorKind.VISIBILITY_ATTR = CursorKind(417)
 CursorKind.DLLEXPORT_ATTR = CursorKind(418)
 CursorKind.DLLIMPORT_ATTR = CursorKind(419)
 
+CursorKind.WARN_UNUSED_RESULT_ATTR = CursorKind(440)
 CursorKind.ALIGNED_ATTR = CursorKind(441)
 
 ###
