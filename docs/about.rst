@@ -80,6 +80,6 @@ Explicitly Non-Goals Are:
      there will be no compromises in favour of speed).
 
    * Being self-contained
-     (At least LLVM and a C-compiler will always be required to be installed).
+     (A C-compiler will always be required to be installed for building C code).
 
    * Support for Python < 3.6

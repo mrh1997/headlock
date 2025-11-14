@@ -14,7 +14,6 @@ Higher versions should work nevertheless.
  * Windows, Linux, or macOS are required
  * `CPython 3 <https://www.python.org/downloads/release>`_
    Version 3.6 or higher is required
- * `LLVM <http://releases.llvm.org/download.html>`_ (Version 7.0.0 or higher).
  * A C compiler is required:
 
    * **Windows:** `MinGW <https://winlibs.com/>`_ at `C:\Program Files\mingw64`

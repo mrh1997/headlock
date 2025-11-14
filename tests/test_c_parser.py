@@ -5,7 +5,7 @@ import warnings
 from pathlib import Path
 import pytest
 from .helpers import build_tree
-from headlock.libclang.cindex import TranslationUnit
+from clang.cindex import TranslationUnit
 from headlock.c_parser import CParser, MacroDef, ParseError
 from headlock.c_data_model import BuildInDefs as bd, CFuncType, CStructType, \
     CEnumType, CUnionType, CVectorType
@@ -129,7 +129,6 @@ class TestMacroDef:
     def test_createFromSrcCode_onEmptyStringMacros_returnStringEmptyString(self):
         self.assert_create_as(r'MACRO  ""', exp_expr='""')
 
-    @pytest.mark.xfail
     def test_createFromSrcCode_onString_returnsUnmodifiedString(self):
         self.assert_create_as(r'MACRO  "self.test = 99/3"',
                               exp_expr='"self.test = 99/3"')

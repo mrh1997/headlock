@@ -39,8 +39,7 @@ Explicitly Non-Goals Are:
    slow. But if speed conflicts with one of the goals of this project,
    there will be no compromises in favour of speed.
  - Being self-contained is not planned. A C-compiler is required
-   to be installed. Furthermore currently LLVM has to be installed
-   at it is used for parsing the file.
+   to be installed for building C code.
  - Python < 3.6 will never be supported
 
 

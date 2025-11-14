@@ -21,8 +21,10 @@ setup(
               'headlock.address_space',
               'headlock.c_data_model',
               'headlock.integrations.pytest',
-              'headlock.libclang',
               'headlock.buildsys_drvs'],
+    install_requires=[
+        'libclang>=18.1.1,<19.0.0',
+    ],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Operating System :: Microsoft :: Windows',
