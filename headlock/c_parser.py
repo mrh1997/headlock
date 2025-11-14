@@ -7,24 +7,16 @@ from pathlib import Path
 import warnings
 from typing import Dict, List, Any, Union
 
-from .libclang.cindex import CursorKind, StorageClass, TypeKind, \
+from clang.cindex import CursorKind, StorageClass, TypeKind, \
     TranslationUnit, Config, TranslationUnitLoadError, LibclangError, Type
 from .c_data_model import BuildInDefs, CProxyType, CFuncType, CStructType, \
     CUnionType, CEnumType, CVectorType, CStruct, CUnion, CEnum, CArrayType
 
 
-if sys.platform == 'win32':
-    if platform.architecture()[0] == '32bit':
-        default_llvm_dir = r'C:\Program Files (x86)\LLVM\bin'
-    else:
-        default_llvm_dir = r'C:\Program Files\LLVM\bin'
-elif sys.platform == 'linux':
-    import glob
-    default_llvm_dir = max(glob.glob(r'/usr/lib/llvm-*/lib'))
-else:
-    raise NotImplementedError('This operating system is not supported yet')
-Config.set_library_path(os.environ.get('LLVM_DIR', default_llvm_dir))
-Config.set_required_version(7, 0, 0)
+# libclang from PyPI bundles its own library
+# Only override if LLVM_DIR is explicitly set by the user
+if 'LLVM_DIR' in os.environ:
+    Config.set_library_path(os.environ['LLVM_DIR'])
 
 
 class ParseError(Exception):
@@ -328,11 +320,13 @@ class CParser:
                 ret_objtype = self.convert_type_from_cursor(
                     type_crs.get_result())
             arg_cproxytypes = []
-            for param in type_crs.argument_types():
-                arg_cproxytype = self.convert_type_from_cursor(param)
-                if isinstance(arg_cproxytype, CArrayType):
-                    arg_cproxytype = arg_cproxytype.base_type.ptr
-                arg_cproxytypes.append(arg_cproxytype)
+            # Check if this is actually a FUNCTIONPROTO before calling argument_types()
+            if type_crs.kind == TypeKind.FUNCTIONPROTO:
+                for param in type_crs.argument_types():
+                    arg_cproxytype = self.convert_type_from_cursor(param)
+                    if isinstance(arg_cproxytype, CArrayType):
+                        arg_cproxytype = arg_cproxytype.base_type.ptr
+                    arg_cproxytypes.append(arg_cproxytype)
             res = CFuncType(ret_objtype, arg_cproxytypes)
         elif type_crs.kind == TypeKind.ELABORATED:
             decl_cursor = type_crs.get_declaration()
@@ -450,7 +444,8 @@ class CParser:
                         for mname, mval in predefs.items()]
                      + list(sys_inc_dir_args(self.sys_include_dirs))
                      + ([] if not self.target_compiler
-                        else [f'--target={self.target_compiler}']),
+                        else [f'--target={self.target_compiler}'])
+                    + ['-ferror-limit=0'],
                 options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
         except LibclangError as e:
             raise ParseError(str(e) + "\nMaybe libclang library is not found. "
@@ -465,11 +460,12 @@ class CParser:
             if not self.is_sys_hdr(incl_file_path):
                 self.source_files.add(self.resolve(incl_file_path))
         errors = [diag for diag in tu.diagnostics
-                   if diag.severity >= diag.Error]
+                   if diag.severity >= diag.Error
+                   and not (diag.location.file is not None and self.is_sys_hdr(str(diag.location.file)))]
         if errors:
             raise ParseError([
-                (err.spelling, err.location.file.name, err.location.line)
-                for err in errors if err.location.file is not None])
+                (err.spelling, err.location.file.name if err.location.file else "<unknown>", err.location.line)
+                for err in errors[:20]])
         self.read_from_cursor(tu.cursor)
         filenames = set(map(operator.itemgetter(0), self.macro_locs.values()))
         files = {self.resolve(fn): Path(fn).read_bytes() for fn in filenames}

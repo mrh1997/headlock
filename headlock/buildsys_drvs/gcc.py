@@ -130,12 +130,45 @@ class GccBuildDescription(BuildDescription):
         BUILD_CACHE.add((tuple(transunits), self.build_dir))
 
 
-class Gcc32BuildDescription(GccBuildDescription):
+# Platform-specific base classes
+
+class GccLinuxBuildDescription(GccBuildDescription):
+    """Base class for Linux builds"""
+    def exe_path(self):
+        return self.build_dir / '__headlock__.so'
+
+
+class GccMacOSBuildDescription(GccBuildDescription):
+    """Base class for macOS builds"""
+    def exe_path(self):
+        return self.build_dir / '__headlock__.dylib'
+
+
+# Architecture-specific implementations
+
+class GccLinux32BuildDescription(GccLinuxBuildDescription):
     def clang_target(self):
         return 'i386-pc-linux-gnu'
 
 
-class Gcc64BuildDescription(GccBuildDescription):
+class GccLinux64BuildDescription(GccLinuxBuildDescription):
     ADDITIONAL_COMPILE_OPTIONS = ['-fPIC']
     def clang_target(self):
         return 'x86_64-pc-linux-gnu'
+
+
+class GccMacOS64BuildDescription(GccMacOSBuildDescription):
+    ADDITIONAL_COMPILE_OPTIONS = ['-fPIC']
+    def clang_target(self):
+        return 'x86_64-apple-darwin'
+
+
+class GccMacOSArm64BuildDescription(GccMacOSBuildDescription):
+    ADDITIONAL_COMPILE_OPTIONS = ['-fPIC']
+    def clang_target(self):
+        return 'arm64-apple-darwin'
+
+
+# Backward compatibility aliases (deprecated)
+Gcc32BuildDescription = GccLinux32BuildDescription
+Gcc64BuildDescription = GccLinux64BuildDescription

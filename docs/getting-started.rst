@@ -11,13 +11,16 @@ thus have to be installed before using it.
 Currently it is only explicitly tested  with the minimal version requirements.
 Higher versions should work nevertheless.
 
- * Windows or Linux are required
+ * Windows, Linux, or macOS are required
  * `CPython 3 <https://www.python.org/downloads/release>`_
-   Version 3.6 or higher is required 
- * `LLVM <http://releases.llvm.org/download.html>`_ (Version 7.0.0 or higher).
- * GCC is required (in case of Windows
-   `MinGW <https://winlibs.com/>`_ at `C:\Program Files\mingw64`
-   respective `C:\Program Files (x86)\mingw32` is needed).
+   Version 3.6 or higher is required
+ * A C compiler is required:
+
+   * **Windows:** `MinGW <https://winlibs.com/>`_ at `C:\Program Files\mingw64`
+     respective `C:\Program Files (x86)\mingw32`
+   * **Linux:** GCC
+   * **macOS:** Clang (from Xcode Command Line Tools or Homebrew)
+
    Later other C compilers shall :ref:`be supported <dev-status>`!
 
 

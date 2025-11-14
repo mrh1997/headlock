@@ -19,9 +19,7 @@ The current status of the project
 (preliminary limitations/not yet implemented features)
 is shown in the following list:
 
- * Does not work on macOS
- * Works only with GCC/Mingw64
- * Requires LLVM
+ * Works only with GCC/Clang (Linux/macOS) or MinGW (Windows)
  * Does not support specifying packing of structures in C sources
    (``#pragma pack``).
    As workaround it is possible to specify packing on a per-C-file basis in

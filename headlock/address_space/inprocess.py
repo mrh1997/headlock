@@ -2,6 +2,7 @@ from platform import architecture
 from typing import Callable, List, Set
 import ctypes as ct
 from ctypes import wintypes
+from ctypes.util import find_library
 import sys
 from threading import local
 from collections import defaultdict
@@ -17,7 +18,16 @@ def free_cdll(cdll):
         ct.windll.kernel32.FreeLibrary.argtypes = [wintypes.HMODULE]
         ct.windll.kernel32.FreeLibrary(cdll._handle)
     elif sys.platform == 'linux':
-        libdl = ct.CDLL('libdl.so')
+        libdl_path = find_library('dl')
+        if not libdl_path:
+            # On modern Linux, libdl is integrated into libc
+            libdl_path = find_library('c')
+        libdl = ct.CDLL(libdl_path)
+        libdl.dlclose.argtypes = [ct.c_void_p]
+        libdl.dlclose.restype = ct.c_int
+        libdl.dlclose(cdll._handle)
+    elif sys.platform == 'darwin':
+        libdl = ct.CDLL('libdl.dylib')
         libdl.dlclose(cdll._handle)
     else:
         raise NotImplementedError('the platform is not supported yet')

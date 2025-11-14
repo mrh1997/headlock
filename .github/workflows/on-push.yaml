@@ -9,9 +9,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: [3.6, 3.7, 3.8, 3.9, "3.10", 3.11, 3.12]
-        os: [windows-2022]
+        python: ["3.10", 3.11, 3.12, 3.13, 3.14]
+        os: [windows-2025, ubuntu-24.04]
         arch: [x64]
+        include:
+          # Only test macOS on latest Python version
+          - os: macos-15
+            python: 3.14
+            arch: x64
 
     runs-on: ${{matrix.os}}
 
@@ -30,12 +35,12 @@ jobs:
 
       - name: Install tox
         shell: bash
-        run: pip install tox==3.15
+        run: pip install setuptools tox==3.28
 
       - name: Run Unittests
         shell: bash
         run: |
-          if [ ${{matrix.os}} = "windows-2022" ]
+          if [ ${{matrix.os}} = "windows-2025" ]
           then export MINGW_X86_64_DIR=C:/mingw64
           fi
           tox -e py${{matrix.python}}-${{matrix.arch}}
