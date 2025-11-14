@@ -40,7 +40,7 @@ Explicitly Non-Goals Are:
    there will be no compromises in favour of speed.
  - Being self-contained is not planned. A C-compiler is required
    to be installed for building C code.
- - Python < 3.6 will never be supported
+ - Python < 3.9 is not supported
 
 
 ## Sample
@@ -98,7 +98,7 @@ This demonstrates how:
 
 ## Status
 
-Currently this is alpha.
+Currently this is beta.
 
 For a list of planned but not yet implemented features please refer to
 [Development Status](https://headlock.readthedocs.io/en/latest/development-status.html)
